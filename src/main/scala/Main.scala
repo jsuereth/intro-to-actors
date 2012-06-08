@@ -32,22 +32,29 @@ object AdaptiveSearchTreeMain {
         .setRejectionPolicy(new CallerRunsPolicy)
         .build */
     
-    val searchTree = system.actorOf(Props(new AdaptiveSearchNode).withDispatcher("search-tree-dispatcher"), "search-tree")
+    val searchTree = system.actorOf(
+        Props(new AdaptiveSearchNode)
+        .withDispatcher("search-tree-dispatcher"), "search-tree")
     submitInitialDocuments(searchTree)
     searchTree
   }
   
   lazy val cache = {
-    system.actorOf(Props(new SearchCache(tree)).withDispatcher("search-cache-dispatcher"), "search-cache")
+    system.actorOf(
+        Props(new SearchCache(tree))
+        .withDispatcher("search-cache-dispatcher"), "search-cache")
   }
   
   lazy val throttle = {
-    system.actorOf(Props(new FrontEndThrottler(cache)).withDispatcher("front-end-dispatcher"), "throttler")
+    system.actorOf(
+        Props(new FrontEndThrottler(cache))
+        .withDispatcher("front-end-dispatcher"), "throttler")
   }
   
   lazy val frontend = {
-    val frontend = system.actorOf(Props(new FrontEnd(throttle)).withDispatcher("front-end-dispatcher"), "front-end")
-    frontend
+    system.actorOf(
+        Props(new FrontEnd(throttle))
+        .withDispatcher("front-end-dispatcher"), "front-end")
   }
   
   def shutdown(): Unit = system.shutdown()
