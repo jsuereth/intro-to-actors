@@ -1,7 +1,7 @@
 package scattergather
 
 import akka.actor.{ReceiveTimeout, ActorRef, Actor, Props}
-import akka.util.duration._
+import concurrent.duration.Duration._
 
 class SearchCache(index: ActorRef) extends Actor {
   def receive: Receive = {
