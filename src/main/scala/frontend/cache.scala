@@ -1,13 +1,15 @@
-package scattergather
+package frontend
 
-import akka.actor.{ReceiveTimeout, ActorRef, Actor, Props}
-import concurrent.duration.Duration._
+import akka.actor.{ReceiveTimeout, ActorRef, Actor, Props
+}
+import scattergather.{SearchQuery => Query,QueryResponse}
+import concurrent.duration._
 
 class SearchCache(index: ActorRef) extends Actor {
   def receive: Receive = {
     // Hack for behavior...
-    case SearchQuery("DROP", _, _) => //Ignore for timeout...
-    case q: SearchQuery => issueSearch(q)
+    case Query("DROP", _, _) => //Ignore for timeout...
+    case q: Query => issueSearch(q)
     case AddToCache(q, r) =>
       println("Caching ["+q+"]!")
       cache += q -> r
@@ -15,7 +17,7 @@ class SearchCache(index: ActorRef) extends Actor {
       cache -= q
   }
   
-  def issueSearch(q: SearchQuery): Unit = {
+  def issueSearch(q: Query): Unit = {
     (cache get q.query) match {
         case Some(response) => 
           println("Repsonding ["+q.query+"] with cache!")
@@ -25,7 +27,7 @@ class SearchCache(index: ActorRef) extends Actor {
           val int = context.actorOf(
               Props(new CacheInterceptor(self, q.gatherer, q.query))
               .withDispatcher(context.dispatcher.id))
-          index ! SearchQuery(q.query, q.maxDocs, int)
+          index ! Query(q.query, q.maxDocs, int)
       }
   }
   // TODO - Pick a data structure that lets us limit the size...

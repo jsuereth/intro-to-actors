@@ -1,7 +1,8 @@
 package scattergather
 
 import akka.actor.{ReceiveTimeout, ActorRef, Actor}
-import akka.util.duration._
+import concurrent.duration._
+import data.Hotel
 
 /** An actor which receives distributed results and aggregates/responds to the original query. */
 case class GathererNode(
@@ -10,14 +11,14 @@ case class GathererNode(
     maxResponses : Int,
     client : ActorRef) extends Actor {
   
-  context.setReceiveTimeout(1 seconds)
+  context.setReceiveTimeout(1.seconds)
 
   /** Stores the current set of results */
-  var results = Seq[(Double, String)]()
+  var results = Seq[(Double, Hotel)]()
   var responseCount = 0
   
   /** Combines the current reuslts with the next set of search results. */
-  private def combineResults(current : Seq[(Double, String)], next : Seq[(Double, String)]) =
+  private def combineResults(current : Seq[(Double, Hotel)], next : Seq[(Double, Hotel)]) =
     (current ++ next).view.sortBy(_._1).take(maxDocs).force
 
   def receive = {
@@ -27,10 +28,10 @@ case class GathererNode(
       if(responseCount == maxResponses) {
         client ! QueryResponse(results)
         context stop self
-      } else context.setReceiveTimeout(1 seconds)
+      } else context.setReceiveTimeout(1.seconds)
       ()
     case QueryResponse(_, true) => // ignore
-      context.setReceiveTimeout(1 seconds)
+      context.setReceiveTimeout(1.seconds)
     case ReceiveTimeout  =>
       // TODO - Send a response?
       client ! QueryResponse(Seq(), true)

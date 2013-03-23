@@ -17,7 +17,7 @@ trait SearchParent { self: AdaptiveSearchNode =>
         for (node <- children) {
           node ! SearchQuery(q, max, gatherer)
         }
-    case s @ SearchableDocument(_) => getNextChild ! s
+    case s @ AddHotel(_) => getNextChild ! s
   }
 
   // Round Robin

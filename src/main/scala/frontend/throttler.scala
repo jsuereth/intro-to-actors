@@ -1,8 +1,7 @@
 package frontend
 
 import akka.actor.{Actor,ActorRef, ReceiveTimeout, Props}
-import akka.util.Duration
-import akka.util.duration._
+import concurrent.duration._
 import scattergather.QueryResponse
 
 object Defaults {
@@ -37,7 +36,7 @@ class FrontEndThrottler(tree: ActorRef) extends Actor {
           Defaults.badQueryResponse)).withDispatcher(context.dispatcher.id))
       tree ! scattergather.SearchQuery(q.query, q.maxDocs, timer)
     }
-  def currentTimeout: Duration = 1 seconds
+  def currentTimeout: Duration = 1.seconds
 }
 
 

@@ -1,5 +1,6 @@
 import scattergather._
 import frontend._
+import data._
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.dispatch.Dispatchers
 import java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy
@@ -11,18 +12,9 @@ object AdaptiveSearchTreeMain {
   lazy val system = ActorSystem.create("search-example", loadConfig)
   
   def submitInitialDocuments(searchNode: ActorRef) =
-    Seq("Some example data for you",
-        "Some more example data for you to use",
-        "To be or not to be, that is the question",
-        "OMG it's a cat",
-        "This is an example.  It's a great one",
-        "HAI there", 
-        "HAI IZ HUNGRY",
-        "Hello, World",
-        "Hello, and welcome to the search node 8",
-        "The lazy brown fox jumped over the",
-        "Winning is the best because it's winning."
-    ) foreach (doc =>  searchNode ! SearchableDocument(doc))
+    Seq(
+      Hotel("1", "Hilton", "A nice hotel", Location("123 Street St", "New York", "USA"))
+    ) foreach (doc =>  searchNode ! AddHotel(doc))
   lazy val tree = {
    /* val searchnodedispatcher = Dispatchers.newExecutorBasedEventDrivenDispatcher("adaptive search tree")
         .withNewThreadPoolWithLinkedBlockingQueueWithCapacity(100)

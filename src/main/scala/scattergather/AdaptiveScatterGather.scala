@@ -15,7 +15,7 @@ class AdaptiveSearchNode extends Actor with SearchParent with SearchLeaf {
       val child = context.actorOf(
           Props(new AdaptiveSearchNode).withDispatcher("search-tree-dispatcher"), 
           name = "search-node-"+ idx)
-      docs foreach (child ! SearchableDocument(_))
+      docs foreach (child ! AddHotel(_))
       child
     }).toIndexedSeq
     clearIndex()
