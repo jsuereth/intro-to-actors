@@ -4,13 +4,15 @@ import collection.immutable.HashMap
 import akka.actor.{ReceiveTimeout, ActorRef, Actor,Props}
 import data.Hotel
 
-trait SearchLeaf { self: AdaptiveSearchNode =>
+trait TopicNode { self: AdaptiveSearchNode =>
   final val maxNoOfDocuments = 10
+  // List of Hotel ids we us
+  var hotelIds: Seq[String] = Seq.empty
   var documents: Vector[Hotel] = Vector()
   var index: HashMap[String, Seq[(Double, Hotel)]] = HashMap()
 
   
-  def leafNode: PartialFunction[Any, Unit] = {
+  def topicNode: PartialFunction[Any, Unit] = {
     // hacks to excercise behavior
     case SearchQuery("BAD", _, r) => r ! QueryResponse(Seq.empty, failed=true)
     case SearchQuery(query, maxDocs, handler) => executeLocalQuery(query, maxDocs, handler)

@@ -4,10 +4,10 @@ import collection.immutable.HashMap
 import akka.actor.{ReceiveTimeout, ActorRef, Actor,Props}
 
 
-trait SearchParent { self: AdaptiveSearchNode =>
+trait CategoryNode { self: AdaptiveSearchNode =>
  var children = IndexedSeq[ActorRef]()
  var currentIdx = 0
- def parentNode: PartialFunction[Any, Unit] = {
+ def categoryNode: PartialFunction[Any, Unit] = {
     case SearchQuery(q, max, responder) =>
         // TODO - use gatherer scheduler
         val gatherer = context.actorOf(Props(new GathererNode(maxDocs = max,

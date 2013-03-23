@@ -29,7 +29,7 @@ object AdaptiveSearchTreeMain {
         .build */
     
     val searchTree = system.actorOf(
-        Props(new AdaptiveSearchNode)
+        Props(new AdaptiveSearchNode(dbSystem))
         .withDispatcher("search-tree-dispatcher"), "search-tree")
     submitInitialDocuments(searchTree)
     searchTree
