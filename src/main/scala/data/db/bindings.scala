@@ -10,7 +10,12 @@ import com.sleepycat.bind.tuple.{
 
 
 final class BerkeleyBackend(dir: java.io.File) extends StorageBackend {
-  def open(): PersistentStore = null
+  def open(): PersistentStore = new BekeleyPersistentStore({
+    val envConfig = new com.sleepycat.je.EnvironmentConfig
+    envConfig setAllowCreate true
+    envConfig setCacheSize 1000000
+    new Environment(dir, envConfig)
+  })
 }
 object BerkeleyBackend {
   def default = new BerkeleyBackend({

@@ -4,6 +4,8 @@ package db
 /** 
  * Represents an implementation of a persistent store we can use to save the state
  * of our Scatter-Gather actors.
+ * 
+ * TODO - Exceptions should be wrapped and thrown...
  */
 trait StorageBackend {
   def open(): PersistentStore

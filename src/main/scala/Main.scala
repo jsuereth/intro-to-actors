@@ -9,7 +9,11 @@ import com.typesafe.config.{ConfigFactory, Config}
 object AdaptiveSearchTreeMain {
   
   def loadConfig: Config = ConfigFactory.load()
+  
   lazy val system = ActorSystem.create("search-example", loadConfig)
+  
+  lazy val dbSystem =
+    system.actorOf(Props(new data.db.DbSupervisor(data.db.BerkeleyBackend.default)), "search-db")
   
   def submitInitialDocuments(searchNode: ActorRef) =
     Seq(
