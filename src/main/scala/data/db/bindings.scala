@@ -1,53 +1,60 @@
 package data
 package db
 
-import com.sleepycat.je.{
-  DatabaseEntry,
-  Database
-}
+import com.sleepycat.je._
 import com.sleepycat.bind.tuple.{
   TupleBinding,
   TupleOutput,
   TupleInput
 }
 
-// TODO - Clean this up *A LOT*
-object Db {
-  import com.sleepycat.je._
-  private var env: Option[Environment] = None
-  private var hotelDb: Option[DatabaseHelper[String, Hotel]] = None
-  private var topicListDb: Option[DatabaseHelper[String, IdList]] = None
-  private var categoryListDb: Option[DatabaseHelper[String, IdList]] = None
-  def open(): Unit = {
-    val dbDir = new java.io.File("target/db")
-    dbDir.mkdirs()
-    val envConfig = new EnvironmentConfig()
-    envConfig setAllowCreate true
-    env = Some(new Environment(dbDir, envConfig));
 
-    // Open the database. Create it if it does not already exist.
+final class BerkeleyBackend(dir: java.io.File) extends StorageBackend {
+  def open(): PersistentStore = null
+}
+object BerkeleyBackend {
+  def default = new BerkeleyBackend({
+      val tmp = new java.io.File("target/db")
+      tmp.mkdirs()
+      tmp
+    })
+}
+
+/** This class implements the generic `PeristentStore` used for the examples wit BerkeleyDb. */
+final class BekeleyPersistentStore(env: com.sleepycat.je.Environment) extends PersistentStore {
+  val hotels = {
     val dbConfig = new DatabaseConfig()
     dbConfig setAllowCreate true
-    hotelDb = env map (_.openDatabase(null, "hotelDb", dbConfig)) map (db => new DatabaseHelper(db, HotelSerializer))
-    topicListDb = env map (_.openDatabase(null, "topicDb", dbConfig)) map (db => new DatabaseHelper(db, IdListSerializer))
-    categoryListDb = env map (_.openDatabase(null, "categoryDb", dbConfig)) map (db => new DatabaseHelper(db, IdListSerializer))
+    val db = env.openDatabase(null, "hotelDb", dbConfig)
+    new DatabaseHelper(db, HotelSerializer)
   }
-  def topic = topicListDb.get
-  def category = categoryListDb.get
-  def hotel = hotelDb.get
+  val topics = {
+    val dbConfig = new DatabaseConfig()
+    dbConfig setAllowCreate true
+    val db = env.openDatabase(null, "topics", dbConfig)
+    new DatabaseHelper(db, IdListSerializer)
+  }
+  val categories = {
+    val dbConfig = new DatabaseConfig()
+    dbConfig setAllowCreate true
+    val db = env.openDatabase(null, "categories", dbConfig)
+    new DatabaseHelper(db, IdListSerializer)
+  }
+  
   def close(): Unit = {
-    env foreach (_.close)
-    env = None
-    hotelDb foreach (_.close)
-    hotelDb = None
+    // TODO - try catches...
+    env.close()
+    hotels.close()
+    topics.close()
+    categories.close()
   }
 }
 
-class DatabaseHelper[Key, Value](db: Database, serializer: DbSerializer[Key,Value]) {
-  import com.sleepycat.je._
-  def read(): Seq[Value] = {
+/** This class implements the generic backend interface `ValueStore` using a Berkeley db. */
+class DatabaseHelper[Key, Value](db: Database, serializer: DbSerializer[Key,Value]) extends ValueStore[Key,Value] {
+  def list(): Seq[(Key, Value)] = {
     val cursor = db.openCursor(null, null)
-    val results = collection.mutable.ArrayBuffer.empty[Value]
+    val results = collection.mutable.ArrayBuffer.empty[(Key, Value)]
     try {
       val key = new DatabaseEntry
       val value = new DatabaseEntry
@@ -65,21 +72,21 @@ class DatabaseHelper[Key, Value](db: Database, serializer: DbSerializer[Key,Valu
     val key = serializer serializeKey id
     val data = new DatabaseEntry
     db.get(null, key, data, LockMode.DEFAULT) match {
-      case OperationStatus.SUCCESS => Some(serializer.deserialize(key, data))
+      case OperationStatus.SUCCESS => Some(serializer.deserialize(key, data)._2)
       case _ => None
     }
   }
-  def put(value: Value): Unit = {
-    val (key, data) = serializer serialize value
-    db.put(null, key, data)
+  def put(key: Key, value: Value): Unit = {
+    val (k, data) = serializer serialize (key, value)
+    db.put(null, k, data)
   }
   def close(): Unit = db.close()
 }
 
 trait DbSerializer[Key, Value] {
   /** Serailize a value into a key-value pair. */
-  def serialize(value: Value): (DatabaseEntry, DatabaseEntry)
-  def deserialize(key: DatabaseEntry, value: DatabaseEntry): Value
+  def serialize(key: Key, value: Value): (DatabaseEntry, DatabaseEntry)
+  def deserialize(key: DatabaseEntry, value: DatabaseEntry): (Key, Value)
   def serializeKey(key: Key): DatabaseEntry
 }
 
@@ -93,13 +100,13 @@ abstract class StringKeySerializer[Value] extends DbSerializer[String, Value] {
 }
 /** A serializer interface for hotels. */
 object HotelSerializer extends StringKeySerializer[Hotel] {
-  def serialize(hotel: Hotel): (DatabaseEntry, DatabaseEntry) = {
+  def serialize(key: String, hotel: Hotel): (DatabaseEntry, DatabaseEntry) = {
     val entry = new DatabaseEntry
     HotelBinding.objectToEntry(hotel, entry)
-    serializeKey(hotel.id) -> entry
+    serializeKey(key) -> entry
   }
-  def deserialize(key: DatabaseEntry, value: DatabaseEntry): Hotel =
-    HotelBinding.entryToObject(value)
+  def deserialize(key: DatabaseEntry, value: DatabaseEntry): (String, Hotel) =
+    stringBinding.entryToObject(key) -> HotelBinding.entryToObject(value)
   /** Helper object for going to/from DatabaseEntry. */  
   private object HotelBinding extends TupleBinding[Hotel] {
     def objectToEntry(hotel: Hotel, to: TupleOutput): Unit = {
@@ -121,30 +128,26 @@ object HotelSerializer extends StringKeySerializer[Hotel] {
   }
 }
 
-object IdListSerializer extends StringKeySerializer[IdList] {
-  def serialize(ids: IdList): (DatabaseEntry, DatabaseEntry) = {
+object IdListSerializer extends StringKeySerializer[Seq[String]] {
+  def serialize(key: String, ids: Seq[String]): (DatabaseEntry, DatabaseEntry) = {
     val entry = new DatabaseEntry
     IdListBinding.objectToEntry(ids, entry)
-    serializeKey(ids.id) -> entry
+    serializeKey(key) -> entry
   }
-  def deserialize(key: DatabaseEntry, value: DatabaseEntry): IdList =
-    IdListBinding.entryToObject(value)
-  private object IdListBinding extends TupleBinding[IdList] {
-    def objectToEntry(list: IdList, to: TupleOutput): Unit = {
-      to writeString list.id
-      to writeInt list.ids.length
+  def deserialize(key: DatabaseEntry, value: DatabaseEntry): (String, Seq[String]) =
+    stringBinding.entryToObject(key) -> IdListBinding.entryToObject(value)
+  private object IdListBinding extends TupleBinding[Seq[String]] {
+    def objectToEntry(list: Seq[String], to: TupleOutput): Unit = {
+      to writeInt list.length
       var idx = 0
-      while(idx < list.ids.length) {
-        to writeString list.ids(idx)
+      while(idx < list.length) {
+        to writeString list(idx)
       }
     }
-    def entryToObject(ti: TupleInput): IdList = {
-      val id = ti.readString
+    def entryToObject(ti: TupleInput): Seq[String]= {
       val length = ti.readInt
-      val ids =
-        for(i <- 0 until length) 
-        yield ti.readString
-      IdList(id, ids)
+      for(i <- 0 until length) 
+      yield ti.readString
     }
   }
 }
