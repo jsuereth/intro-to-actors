@@ -29,7 +29,7 @@ object AdaptiveSearchTreeMain {
         .build */
     
     val searchTree = system.actorOf(
-        Props(new AdaptiveSearchNode(dbSystem))
+        Props(new AdaptiveSearchNode("test", dbSystem))
         .withDispatcher("search-tree-dispatcher"), "search-tree")
     submitInitialDocuments(searchTree)
     searchTree
@@ -52,6 +52,18 @@ object AdaptiveSearchTreeMain {
         Props(new FrontEnd(throttle))
         .withDispatcher("front-end-dispatcher"), "front-end")
   }
+  
+  lazy val echoActor = {
+    system.actorOf(
+        Props(new Actor {
+          def receive: Receive = {
+            case msg => println(msg)
+          }
+        }), "echo-actor")
+  }
+  
+  def query(query: String): Unit = 
+    frontend.tell(_root_.frontend.SearchQuery(query, 10), echoActor)
   
   def shutdown(): Unit = system.shutdown()
 }

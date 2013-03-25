@@ -13,7 +13,7 @@ final class BerkeleyBackend(dir: java.io.File) extends StorageBackend {
   def open(): PersistentStore = new BekeleyPersistentStore({
     val envConfig = new com.sleepycat.je.EnvironmentConfig
     envConfig setAllowCreate true
-    envConfig setCacheSize 1000000
+    //envConfig setCacheSize 1000000
     new Environment(dir, envConfig)
   })
 }
@@ -147,6 +147,7 @@ object IdListSerializer extends StringKeySerializer[Seq[String]] {
       var idx = 0
       while(idx < list.length) {
         to writeString list(idx)
+        idx += 1
       }
     }
     def entryToObject(ti: TupleInput): Seq[String]= {
