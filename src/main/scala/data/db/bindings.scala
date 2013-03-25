@@ -48,10 +48,10 @@ final class BekeleyPersistentStore(env: com.sleepycat.je.Environment) extends Pe
   
   def close(): Unit = {
     // TODO - try catches...
-    env.close()
     hotels.close()
     topics.close()
     categories.close()
+    env.close()
   }
 }
 
