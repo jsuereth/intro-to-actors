@@ -2,13 +2,14 @@ package data
 package db
 
 import akka.actor.{
-  Actor, Props
+  Actor, Props, ActorLogging
 }
+
 
 /** A supervisor for the database actor that helps us know when to escalate and
  * when to recover.
  */
-class DbSupervisor(backend: StorageBackend) extends Actor {
+class DbSupervisor(backend: StorageBackend) extends Actor with debug.DebugActor with ActorLogging {
   import akka.actor.OneForOneStrategy
   import akka.actor.SupervisorStrategy._
   import scala.concurrent.duration._
@@ -24,7 +25,7 @@ class DbSupervisor(backend: StorageBackend) extends Actor {
   // TODO - Do we need to do this in preStart?
   val child = context.actorOf(Props(new DbActor(backend)), "db-backend")
   
-  def receive = {
+  def receive = debugHandler orElse {
     case msg: DbActor.DbActorMsg ⇒ child.tell(msg, sender)
   }
 }
@@ -33,25 +34,44 @@ class DbSupervisor(backend: StorageBackend) extends Actor {
  * This actor ensures that database access happens in one location,
  * and implements the "unsafe" version of the actor, where failures crash it.
  */
-class DbActor(backend: StorageBackend)  extends Actor {
+class DbActor(backend: StorageBackend)  extends Actor with debug.DebugActor with ActorLogging {
   import DbActor._
-  def receive: Receive = {
+  def receive: Receive = debugHandler orElse {
     case GetHotelByIds(ids) =>
       sender ! ids.flatMap(store.hotels.get)
     case GetCategoryTopicNodeIds(id) =>
-      sender ! store.categories.get(id).toSeq.flatten
-    case GetTopicHotelIds(topic) =>
-      sender ! (store.topics get topic).toSeq.flatten
+      val nodes = getCategoryNodes(id)
+      log.debug(s"DbActor: Found [$id] nodes: [${nodes mkString ","}]")
+      sender ! nodes
+    case GetTopicHotels(topic) =>
+      val hotels = getTopicHotels(topic)
+      log.debug(s"DbActor: Found [$topic] hotels: [${hotels map (_.id) mkString ","}]")
+      sender ! hotels
     case SaveTopic(id, hotels) =>
+      log.debug(s"Saving topic: [$id] with hotels [${hotels mkString ", "}]")
       store.topics.put(id, hotels)
       sender ! SaveOk
     case SaveCategory(id, nodes) =>
+      log.debug(s"Saving category: [$id] with nodes [${nodes mkString ", "}]")
       store.categories.put(id, nodes)
       sender ! SaveOk
     case SaveHotel(hotel) =>
+      log.debug(s"Saving hotel: [${hotel.id}]")
       store.hotels.put(hotel.id, hotel)
       sender ! SaveOk
   }
+  
+  private def getCategoryNodes(id: String): Seq[String] =
+    store.categories.get(id).toSeq.flatten
+  
+  private def getTopicHotels(id: String): Seq[Hotel] =
+    for {
+      hotelIds <- store.topics.get(id).toSeq
+      _ = log.debug(s"DbActor: found [$id] hotelIds [${hotelIds mkString ","}]")
+      hotelId <- hotelIds
+      // TODO - error handling
+      hotel <- store.hotels.get(hotelId).toSeq
+    } yield hotel
   
   def store: PersistentStore = {
     if(_store == null) {
@@ -77,7 +97,7 @@ object DbActor {
   // Returns Seq[String]
   case class GetCategoryTopicNodeIds(id: String) extends DbActorMsg
   // Returns Seq[String]
-  case class GetTopicHotelIds(id: String) extends DbActorMsg
+  case class GetTopicHotels(id: String) extends DbActorMsg
   // Returns SaveOk
   case class SaveTopic(id: String, hotelIdList: Seq[String]) extends DbActorMsg
   // Returns SaveOk

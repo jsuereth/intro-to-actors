@@ -5,8 +5,8 @@ import akka.actor.{ReceiveTimeout, ActorRef, Actor, Props
 import scattergather.{SearchQuery => Query,QueryResponse}
 import concurrent.duration._
 
-class SearchCache(index: ActorRef) extends Actor {
-  def receive: Receive = {
+class SearchCache(index: ActorRef) extends Actor with debug.DebugActor {
+  def receive: Receive = debugHandler orElse {
     // Hack for behavior...
     case Query("DROP", _, _) => //Ignore for timeout...
     case q: Query => issueSearch(q)

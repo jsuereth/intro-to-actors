@@ -1,6 +1,7 @@
 import scattergather._
 import frontend._
 import data._
+import data.db.DbActor._
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.dispatch.Dispatchers
 import java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy
@@ -15,10 +16,29 @@ object AdaptiveSearchTreeMain {
   lazy val dbSystem =
     system.actorOf(Props(new data.db.DbSupervisor(data.db.BerkeleyBackend.default)), "search-db")
   
-  def submitInitialDocuments(searchNode: ActorRef) =
-    Seq(
-      Hotel("1", "Hilton", "A nice hotel", Location("123 Street St", "New York", "USA"))
-    ) foreach (doc =>  searchNode ! AddHotel(doc))
+  private def submitInitialDocuments(searchNode: ActorRef) =
+    for { hotel <- Seq(
+        Hotel("1", "Hilton 1", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("2", "Hilton 2", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("3", "Hilton 3", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("4", "Hilton 4", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("5", "Hilton 5", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("6", "Hilton 6", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("7", "Hilton 7", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("8", "Hilton 8", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("9", "Hilton 9", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("10", "Hilton 10", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("11", "Hilton 11", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("12", "Hilton 12", "A nice hotel", Location("123 Street St", "New York", "USA"))
+      )
+    } {
+     dbSystem ! data.db.DbActor.SaveHotel(hotel)
+     searchNode ! AddHotel(hotel) 
+    }
+  
+  def submitTestData(): Unit =
+    submitInitialDocuments(tree)
+    
   lazy val tree = {
    /* val searchnodedispatcher = Dispatchers.newExecutorBasedEventDrivenDispatcher("adaptive search tree")
         .withNewThreadPoolWithLinkedBlockingQueueWithCapacity(100)
@@ -31,7 +51,7 @@ object AdaptiveSearchTreeMain {
     val searchTree = system.actorOf(
         Props(new AdaptiveSearchNode("test", dbSystem))
         .withDispatcher("search-tree-dispatcher"), "search-tree")
-    submitInitialDocuments(searchTree)
+    //submitInitialDocuments(searchTree)
     searchTree
   }
   
@@ -65,5 +85,10 @@ object AdaptiveSearchTreeMain {
   def query(query: String): Unit = 
     frontend.tell(_root_.frontend.SearchQuery(query, 10), echoActor)
   
+  def showTree(): Unit = {
+    Seq(tree, throttle, frontend, cache) foreach (_ ! debug.PrintName)
+  }
+    
+    
   def shutdown(): Unit = system.shutdown()
 }

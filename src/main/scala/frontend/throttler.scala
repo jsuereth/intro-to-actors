@@ -1,6 +1,6 @@
 package frontend
 
-import akka.actor.{Actor,ActorRef, ReceiveTimeout, Props}
+import akka.actor.{Actor,ActorRef, ReceiveTimeout, Props, ActorLogging}
 import concurrent.duration._
 import scattergather.QueryResponse
 
@@ -8,24 +8,24 @@ object Defaults {
   val badQueryResponse = QueryResponse(Seq.empty, true)
 }
 
-class FrontEndThrottler(tree: ActorRef) extends Actor {
-  def receive: Receive = {
+class FrontEndThrottler(tree: ActorRef) extends Actor with debug.DebugActor with ActorLogging {
+  def receive: Receive = debugHandler orElse {
     case q: SearchQuery => 
       issueQuery(scattergather.SearchQuery(q.query, q.maxDocs, sender))
     case q: scattergather.SearchQuery =>
       issueQuery(q)
     case TimedOut =>
-      Console.println("Query timeout!")
+      log.debug("Query timeout!")
       badQueryCount += 1
     case Success =>
-      Console.println("Query Success!")
+      log.debug("Query Success!")
       if(badQueryCount > 0) badQueryCount -= 1
   }
   
   var badQueryCount: Int = 0
   def issueQuery(q: scattergather.SearchQuery): Unit = 
     if(badQueryCount > 10) {
-      Console.println("Fail whale!")
+      log.debug("Fail whale!")
       // Slowly lower count until we're back to normal and allow some through.
       badQueryCount -= 1
       q.gatherer ! Defaults.badQueryResponse
