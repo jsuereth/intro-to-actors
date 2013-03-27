@@ -11,9 +11,9 @@ object Defaults {
 class FrontEndThrottler(tree: ActorRef) extends Actor with debug.DebugActor with ActorLogging {
   def receive: Receive = debugHandler orElse {
     case q: SearchQuery => 
-      issueQuery(scattergather.SearchQuery(q.query, q.maxDocs, sender))
+      issueQuery(scattergather.SearchQuery(q.query, q.maxDocs), sender)
     case q: scattergather.SearchQuery =>
-      issueQuery(q)
+      issueQuery(q, sender)
     case TimedOut =>
       log.debug("Query timeout!")
       badQueryCount += 1
@@ -23,18 +23,18 @@ class FrontEndThrottler(tree: ActorRef) extends Actor with debug.DebugActor with
   }
   
   var badQueryCount: Int = 0
-  def issueQuery(q: scattergather.SearchQuery): Unit = 
+  def issueQuery(q: scattergather.SearchQuery, client: ActorRef): Unit = 
     if(badQueryCount > 10) {
       log.debug("Fail whale!")
       // Slowly lower count until we're back to normal and allow some through.
       badQueryCount -= 1
-      q.gatherer ! Defaults.badQueryResponse
+      client ! Defaults.badQueryResponse
     }
     else {
       val timeout = currentTimeout
-      val timer = context.actorOf(Props(new QueryTimer(timeout, q.gatherer, self, 
+      val timer = context.actorOf(Props(new QueryTimer(timeout, client, self, 
           Defaults.badQueryResponse)).withDispatcher(context.dispatcher.id))
-      tree ! scattergather.SearchQuery(q.query, q.maxDocs, timer)
+      tree.tell(scattergather.SearchQuery(q.query, q.maxDocs), timer)
     }
   def currentTimeout: Duration = 1.seconds
 }

@@ -10,7 +10,7 @@ case class AddHotel(content: Hotel)
 /**
  * Represents a Search Query that is sent through the actors system.
  */
-case class SearchQuery(query: String, maxDocs: Int, gatherer: ActorRef)
+case class SearchQuery(query: String, maxDocs: Int)
 
 /**
  * Represents a partial or full response of query results.

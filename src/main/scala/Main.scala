@@ -49,7 +49,7 @@ object AdaptiveSearchTreeMain {
         .build */
     
     val searchTree = system.actorOf(
-        Props(new AdaptiveSearchNode("test", dbSystem))
+        Props(new NodeManager("test", dbSystem))
         .withDispatcher("search-tree-dispatcher"), "search-tree")
     //submitInitialDocuments(searchTree)
     searchTree
@@ -86,7 +86,7 @@ object AdaptiveSearchTreeMain {
     frontend.tell(_root_.frontend.SearchQuery(query, 10), echoActor)
   
   def showTree(): Unit = {
-    Seq(tree, throttle, frontend, cache) foreach (_ ! debug.PrintName)
+    debug.DebugCollector.collectGraph(system, Seq(tree, throttle, frontend, cache))
   }
     
     

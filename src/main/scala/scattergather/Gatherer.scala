@@ -3,13 +3,14 @@ package scattergather
 import akka.actor.{ReceiveTimeout, ActorRef, Actor}
 import concurrent.duration._
 import data.Hotel
+import debug.DebugActor
 
 /** An actor which receives distributed results and aggregates/responds to the original query. */
 case class GathererNode(
     maxDocs: Int,
     query : String,
     maxResponses : Int,
-    client : ActorRef) extends Actor {
+    client : ActorRef) extends Actor with DebugActor {
   
   context.setReceiveTimeout(1.seconds)
 
@@ -21,7 +22,7 @@ case class GathererNode(
   private def combineResults(current : Seq[(Double, Hotel)], next : Seq[(Double, Hotel)]) =
     (current ++ next).view.sortBy(_._1).take(maxDocs).force
 
-  def receive = {
+  def receive = debugHandler orElse {
     case QueryResponse(next, false) =>
       results = combineResults(results, next)
       responseCount += 1

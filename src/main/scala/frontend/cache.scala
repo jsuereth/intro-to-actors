@@ -14,7 +14,7 @@ import concurrent.duration._
 class SearchCache(index: ActorRef) extends Actor with debug.DebugActor {
   def receive: Receive = debugHandler orElse {
     // Hack for behavior...
-    case Query("DROP", _, _) => //Ignore for timeout...
+    case Query("DROP", _) => //Ignore for timeout...
     case q: Query => issueSearch(q)
     case AddToCache(q, r) =>
       println("Caching ["+q+"]!")
@@ -27,13 +27,13 @@ class SearchCache(index: ActorRef) extends Actor with debug.DebugActor {
     (cache get q.query) match {
         case Some(response) => 
           println("Repsonding ["+q.query+"] with cache!")
-          q.gatherer ! response
+          sender ! response
         case _ => 
           // Adapt the query so we have a chance to add it to our cache.
           val interceptor = context.actorOf(
-              Props(new CacheInterceptor(self, q.gatherer, q.query))
+              Props(new CacheInterceptor(self, sender, q.query))
               .withDispatcher(context.dispatcher.id))
-          index ! Query(q.query, q.maxDocs, interceptor)
+          index.tell(Query(q.query, q.maxDocs), interceptor)
       }
   }
   // TODO - Pick a data structure that lets us limit the size...
