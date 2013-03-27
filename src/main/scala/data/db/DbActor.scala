@@ -22,7 +22,7 @@ class DbSupervisor(backend: StorageBackend) extends Actor with debug.DebugActor 
       case _: com.sleepycat.je.DatabaseException => Restart
       case _: Exception => Restart
     }
-  // TODO - Do we need to do this in preStart?
+  // Note: We cannot override preRestart with this here.
   val child = context.actorOf(Props(new DbActor(backend)), "db-backend")
   
   def receive = debugHandler orElse {
@@ -79,11 +79,7 @@ class DbActor(backend: StorageBackend)  extends Actor with debug.DebugActor with
     }
     _store
   }
-  var _store: PersistentStore = backend.open
-  override def preStart(): Unit = {
-    if(_store == null)
-      _store = backend.open
-  }
+  var _store: PersistentStore = null
   // TODO - is preRestart needed?
   override def postStop(): Unit = {
     if(_store != null) store.close()

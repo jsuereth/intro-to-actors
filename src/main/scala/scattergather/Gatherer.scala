@@ -29,7 +29,6 @@ case class GathererNode(
         client ! QueryResponse(results)
         context stop self
       } else context.setReceiveTimeout(1.seconds)
-      ()
     case QueryResponse(_, true) => // ignore
       context.setReceiveTimeout(1.seconds)
     case ReceiveTimeout  =>

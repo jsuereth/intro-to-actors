@@ -8,9 +8,9 @@ case object PrintName
 trait DebugActor extends Actor {
   def debugHandler: Receive = {
     case PrintName => 
-      // TODO - Send this to the sender...
+      // TODO - Aggregate this krap and make a nice tree.
       sender ! context.self
-      println(context.self.path.elements.mkString("/"))
+      println(context.self.path)
       context.children foreach (_ ! PrintName)
   }
 }

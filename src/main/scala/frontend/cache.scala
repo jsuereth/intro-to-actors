@@ -5,6 +5,12 @@ import akka.actor.{ReceiveTimeout, ActorRef, Actor, Props
 import scattergather.{SearchQuery => Query,QueryResponse}
 import concurrent.duration._
 
+/** A caching actor for the search tree.  This will cache any successful query results into
+ * the cache.
+ * 
+ * Note: this does not *AGE* the cache right now, nor does it go make it up-to-date as
+ * the search tree evolves.  In annoying fashion, we leave that as an exercise for the reader :).
+ */
 class SearchCache(index: ActorRef) extends Actor with debug.DebugActor {
   def receive: Receive = debugHandler orElse {
     // Hack for behavior...
@@ -24,24 +30,35 @@ class SearchCache(index: ActorRef) extends Actor with debug.DebugActor {
           q.gatherer ! response
         case _ => 
           // Adapt the query so we have a chance to add it to our cache.
-          val int = context.actorOf(
+          val interceptor = context.actorOf(
               Props(new CacheInterceptor(self, q.gatherer, q.query))
               .withDispatcher(context.dispatcher.id))
-          index ! Query(q.query, q.maxDocs, int)
+          index ! Query(q.query, q.maxDocs, interceptor)
       }
   }
   // TODO - Pick a data structure that lets us limit the size...
   var cache: Map[String, QueryResponse] = Map.empty
 }
 
+
+/**
+ * This Actor is responsible for intercepting query responses and adding them to the cache if
+ * they were successful.
+ */
 class CacheInterceptor(cache: ActorRef, listener: ActorRef, query: String) extends Actor {
   def receive: Receive = {
     case q: QueryResponse =>
       listener ! q
       if(!q.failed) cache ! AddToCache(query, q)
-      // TODO - Stop ourselves?
+      context stop self
+    case _: ReceiveTimeout =>
+      // If the query took to long, w assume a failure, and shut ourselves down.
+      // TODO - For nicety, perhaps we should warn the user?
+      context stop self
   }
+  // TODO - Configure this timeout somewhere globally.
+  context setReceiveTimeout 3.seconds
 }
-
+// Internal API for the cache...
 case class AddToCache(query: String, r: QueryResponse)
 case class Invalidate(query: String)
