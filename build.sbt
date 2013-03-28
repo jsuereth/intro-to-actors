@@ -9,7 +9,8 @@ resolvers += "Oracle repo" at "http://download.oracle.com/maven"
 scalaVersion := "2.10.1"
 
 libraryDependencies ++= Seq(
-  "com.typesafe.akka" %% "akka-actor" % "2.1.0",
+  "com.typesafe.akka" %% "akka-actor" % "2.2-M2",
+  "com.typesafe.akka" %% "akka-cluster-experimental" % "2.2-M2",
   "org.specs2" %% "specs2" % "1.14" % "test",
   "com.sleepycat" % "je" % "3.3.75"
 )

@@ -27,7 +27,7 @@ class NodeManager(val id: String, val db: ActorRef) extends Actor with ActorLogg
         }
         
       case _ => 
-        log.info(s"Buffering message: $msg from $from")
+        log.debug(s"Buffering message: $msg from $from")
         bufferedMessages append (msg -> from)
     }
   }
@@ -43,7 +43,7 @@ class NodeManager(val id: String, val db: ActorRef) extends Actor with ActorLogg
     current foreach (_ ! PoisonPill)
     current = Some(next)
     // Flush messages we were holding on to.
-    log.info(s"Flushing buffered messages to $next")
+    log.debug(s"Flushing buffered messages to $next")
     flushPending()
   }
   
@@ -66,6 +66,7 @@ class NodeManager(val id: String, val db: ActorRef) extends Actor with ActorLogg
       // running of the search index.
       dbHandler ! SaveTopic(hotels)
     case SaveCategory(topics) =>
+      log.debug(s"Attempting to save category [$id] with topics [${topics mkString ","}]")
       dbHandler ! SaveCategory(topics)
     case BecomeTopic(hotels) =>
       killAndReplace(context.actorOf(Props(new TopicNode(hotels)), s"topic-$id-$changes"))
@@ -80,7 +81,6 @@ class NodeManager(val id: String, val db: ActorRef) extends Actor with ActorLogg
       changes += 1
     case s @ Split(hotels: Seq[Hotel]) =>
       killAndHoldMessages()
-      log.debug(s"Splitting node[$id]")
       splitter ! TopicSplitter.Split(id, hotels)
       // We continue servicing requests, even as we try to split.
     case Status.Failure(ex) =>

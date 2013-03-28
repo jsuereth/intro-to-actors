@@ -18,7 +18,7 @@ class CategoryNode(childProps: Seq[CategoryChild]) extends Actor with DebugActor
       val gatherer = context.actorOf(Props(new GathererNode(maxDocs = max,
           maxResponses = children.size,
           query = q,
-          client = client)).withDispatcher(context.dispatcher.id))
+          client = client)))
       for (node <- children) node.tell(SearchQuery(q, max), gatherer)
     case s @ AddHotel(_) => getNextChild ! s
   }

@@ -9,8 +9,8 @@ import akka.actor.ActorLogging
 class TopicNode(hotels: Seq[Hotel]) extends Actor with DebugActor with ActorLogging {
   def maxNoOfDocuments: Int = 5
   // List of Hotel ids we us
-  var hotelIds: Seq[String] = hotels map (_.id)
-  var documents: Vector[Hotel] = hotels.toVector
+  var hotelIds: Set[String] = hotels.map(_.id).toSet
+  var documents: Set[Hotel] = hotels.toSet
   var index: HashMap[String, Seq[(Double, Hotel)]] = HashMap()
   
   def receive: Receive = debugHandler orElse {
@@ -26,20 +26,22 @@ class TopicNode(hotels: Seq[Hotel]) extends Actor with DebugActor with ActorLogg
   private def split(): Unit = {
     // TODO - Keep track of the fact we're splitting and avoid trying to
     // split again, but somehow feed new hotels up...
-    context.parent ! NodeManager.Split(documents)
+    context.parent ! NodeManager.Split(documents.toSeq)
   }
   
-  private def addHotelToLocalIndex(hotel: Hotel) = {
-    hotelIds = hotelIds :+ hotel.id
-    // TODO - Load the hotel when needed.
-    documents = documents :+ hotel
-    // Tell our parent we need to be saved with the new documents...
-    context.parent ! NodeManager.SaveTopic(documents)
-    // Even if we split, we continue serving documents until the new
-    // node is ready.
-    if (documents.size > maxNoOfDocuments) split()
-    regenerateIndex()
-  }
+  private def addHotelToLocalIndex(hotel: Hotel): Unit = 
+    if(!(documents contains hotel)) {
+      hotelIds = hotelIds + hotel.id
+      // TODO - Load the hotel when needed.
+      documents = documents + hotel
+      // Tell our parent we need to be saved with the new documents...
+      context.parent ! NodeManager.SaveTopic(documents.toSeq)
+      // Even if we split, we continue serving documents until the new
+      // node is ready.
+      log.debug(s"Checking split: ${documents.size} > $maxNoOfDocuments")
+      if (documents.size > maxNoOfDocuments) split()
+      regenerateIndex()
+    }
   
   private def executeLocalQuery(query: String, maxDocs: Int, handler: ActorRef) = {
     val result = for {

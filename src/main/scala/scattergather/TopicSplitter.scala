@@ -19,7 +19,7 @@ class TopicSplitter(val db: ActorRef) extends Actor with ActorLogging {
   
   var currentSplitId: String = ""
   var currentSplitHotels: Seq[Hotel] = Seq.empty
-  val splitTimeout = Timeout(10, TimeUnit.MILLISECONDS)
+  val splitTimeout = Timeout(1, TimeUnit.SECONDS)
   
   // This actor just attempts to split nodes and then returns
   // to the parent with the result.
@@ -27,19 +27,20 @@ class TopicSplitter(val db: ActorRef) extends Actor with ActorLogging {
   // state.
   def receive: Receive = {
     case TopicSplitter.Split(id, hotels) =>
+      log.debug(s"About to split node[$id], waiting for more messages....")
       context become waitForAllSplits
-      assert(currentSplitId == id)
       currentSplitId = id
       currentSplitHotels = hotels
       context setReceiveTimeout splitTimeout.duration
   }
   val waitForAllSplits: Receive = {
     case TopicSplitter.Split(id, hotels) =>
-      assert(currentSplitId == id)
+      assert(currentSplitId == id )
       currentSplitId = id
       currentSplitHotels = hotels
       context setReceiveTimeout splitTimeout.duration
-    case ReceiveTimeout => 
+    case ReceiveTimeout =>
+      log.debug(s"Splitting node [$currentSplitId]")
       doSplit()
       context unbecome ()
   }
@@ -60,9 +61,9 @@ class TopicSplitter(val db: ActorRef) extends Actor with ActorLogging {
       
       val childIdsFuture = Future sequence childIdFutures
       // TODO - Maybe the becomeCategoryMsg includes a boolean denoting "save"
-      val saveTopicMsg = childIdsFuture map NodeManager.SaveCategory.apply
+      val saveCategoryMsg = childIdsFuture map NodeManager.SaveCategory.apply
       val becomeCategoryMsg = childIdsFuture map NodeManager.BecomeCategory.apply
-      pipe(saveTopicMsg) to parent
+      pipe(saveCategoryMsg) to parent
       pipe(becomeCategoryMsg) to parent
   }
   /** TODO - do something amazing here.

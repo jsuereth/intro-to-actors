@@ -34,8 +34,7 @@ class SearchCache(index: ActorRef) extends Actor with debug.DebugActor with Acto
           // Adapt the query so we have a chance to add it to our cache.
           val client = sender
           val interceptor = context.actorOf(
-              Props(new CacheInterceptor(self, client, q.query))
-              .withDispatcher(context.dispatcher.id))
+              Props(new CacheInterceptor(self, client, q.query)))
           index.tell(Query(q.query, q.maxDocs), interceptor)
       }
   }

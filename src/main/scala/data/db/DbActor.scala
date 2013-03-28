@@ -50,11 +50,11 @@ class DbActor(backend: StorageBackend)  extends Actor with debug.DebugActor with
       log.debug(s"Found [$topic] hotels: [${hotels map (_.id) mkString ","}]")
       sender ! hotels
     case SaveTopic(id, hotels) =>
-      log.debug(s"Saving topic: [$id] with hotels [${hotels mkString ", "}]")
+      log.info(s"Saving topic: [$id] with hotels [${hotels mkString ", "}]")
       store.topics.put(id, hotels)
       sender ! SaveOk
     case SaveCategory(id, nodes) =>
-      log.debug(s"Saving category: [$id] with nodes [${nodes mkString ", "}]")
+      log.info(s"Saving category: [$id] with nodes [${nodes mkString ", "}]")
       store.categories.put(id, nodes)
       sender ! SaveOk
     case SaveHotel(hotel) =>

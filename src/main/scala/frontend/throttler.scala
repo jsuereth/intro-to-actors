@@ -31,8 +31,7 @@ class FrontEndThrottler(tree: ActorRef) extends Actor with debug.DebugActor with
     } else {
       val timeout = currentTimeout
       val me = self
-      val timer = context.actorOf(Props(new QueryTimer(timeout, client, me, 
-          Defaults.badQueryResponse)).withDispatcher(context.dispatcher.id))
+      val timer = context.actorOf(Props(new QueryTimer(timeout, client, me, Defaults.badQueryResponse)))
       tree.tell(scattergather.SearchQuery(q.query, q.maxDocs), timer)
     }
 

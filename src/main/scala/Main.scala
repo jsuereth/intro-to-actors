@@ -7,8 +7,8 @@ import akka.dispatch.Dispatchers
 import java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy
 import com.typesafe.config.{ConfigFactory, Config}
 
-object AdaptiveSearchTreeMain {
-  
+
+object SearchSystem {
   def loadConfig: Config = ConfigFactory.load()
   
   val system = ActorSystem.create("search-example", loadConfig)
@@ -16,42 +16,13 @@ object AdaptiveSearchTreeMain {
   val dbSystem =
     system.actorOf(Props(new data.db.DbSupervisor(data.db.BerkeleyBackend.default)), "search-db")
   
-  private def submitInitialDocuments(searchNode: ActorRef) =
-    for { hotel <- Seq(
-        Hotel("1", "Hilton 1", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("2", "Hilton 2", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("3", "Hilton 3", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("4", "Hilton 4", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("5", "Hilton 5", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("6", "Hilton 6", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("7", "Hilton 7", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("8", "Hilton 8", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("9", "Hilton 9", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("10", "Hilton 10", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("11", "Hilton 11", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("12", "Hilton 12", "A nice hotel", Location("123 Street St", "New York", "USA"))
-      )
-    } {
-     dbSystem ! data.db.DbActor.SaveHotel(hotel)
-     tree ! AddHotel(hotel) 
-    }
-  
-  def submitTestData(): Unit =
-    submitInitialDocuments(tree)
+  // TODO - Only when not in debug mode...
+  saveInitialData()
     
-  val tree = {
-   /* val searchnodedispatcher = Dispatchers.newExecutorBasedEventDrivenDispatcher("adaptive search tree")
-        .withNewThreadPoolWithLinkedBlockingQueueWithCapacity(100)
-        .setCorePoolSize(10)
-        .setMaxPoolSize(128)
-        .setKeepAliveTimeInMillis(60000)
-        .setRejectionPolicy(new CallerRunsPolicy)
-        .build */
-    
+  val tree = {   
     val searchTree = system.actorOf(
         Props(new NodeManager("test", dbSystem))
         .withDispatcher("search-tree-dispatcher"), "search-tree")
-    //submitInitialDocuments(searchTree)
     searchTree
   }
   
@@ -75,16 +46,50 @@ object AdaptiveSearchTreeMain {
   
   val echoActor =
     system.actorOf(Props[EchoActor], "echo-actor")
+    
+  def shutdown(): Unit = system.shutdown()
+  
+  
+  def saveInitialData() =
+    for { hotel <- Seq(
+        Hotel("1", "Hilton 1", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("2", "Hilton 2", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("3", "Hilton 3", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("4", "Hilton 4", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("5", "Hilton 5", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("6", "Hilton 6", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("7", "Hilton 7", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("8", "Hilton 8", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("9", "Hilton 9", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("10", "Hilton 10", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("11", "Hilton 11", "A nice hotel", Location("123 Street St", "New York", "USA")),
+        Hotel("12", "Hilton 12", "A nice hotel", Location("123 Street St", "New York", "USA"))
+      )
+    } {
+     SearchSystem.dbSystem ! data.db.DbActor.SaveHotel(hotel)
+     // TODO - Save topics and categories.
+     SearchSystem.dbSystem ! data.db.DbActor.SaveTopic("topic-1", Seq("1", "2", "3"))
+     SearchSystem.dbSystem ! data.db.DbActor.SaveTopic("topic-2", Seq("4", "5", "6"))
+     SearchSystem.dbSystem ! data.db.DbActor.SaveTopic("topic-3", Seq("7", "8", "9"))
+     SearchSystem.dbSystem ! data.db.DbActor.SaveTopic("topic-4", Seq("10", "11", "12"))
+     SearchSystem.dbSystem ! data.db.DbActor.SaveCategory("test", Seq("category-6", "category-7"))
+     //SearchSystem.dbSystem ! data.db.DbActor.SaveCategory("category-1", Seq("category-6", "category-7"))
+     SearchSystem.dbSystem ! data.db.DbActor.SaveCategory("category-6", Seq("topic-1", "topic-2"))
+     SearchSystem.dbSystem ! data.db.DbActor.SaveCategory("category-7", Seq("topic-3", "topic-4"))
+    }
+}
+
+object AdaptiveSearchTreeMain {
   
   def query(query: String): Unit =
-    cache.tell(_root_.scattergather.SearchQuery(query, 10), echoActor)
+    SearchSystem.cache.tell(_root_.scattergather.SearchQuery(query, 10), SearchSystem.echoActor)
   
   def showTree(): Unit = {
-    debug.DebugCollector.collectGraph(system, Seq(tree, throttle, frontend, cache))
+    debug.DebugCollector.collectGraph(SearchSystem.system, Seq(SearchSystem.tree, SearchSystem.throttle, SearchSystem.frontend, SearchSystem.cache))
   }
     
     
-  def shutdown(): Unit = system.shutdown()
+  def shutdown(): Unit = SearchSystem.shutdown()
 }
 
 
