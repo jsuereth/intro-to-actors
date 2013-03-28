@@ -65,10 +65,25 @@ object Main {
     import response._
     import netty._
     object App extends cycle.Plan with cycle.SynchronousExecution with ServerErrorResponse {
+      
+      def resource(name: String): java.io.File =
+        new java.io.File("www" + name)
+      
       def intent = {
-         case GET(Path("/")) => Html(<html>
+        case GET(Path("/")) => Html(<html>
+                                      <head>
+                                         <title>HOTEL SEARCHY APP</title>
+                                         <link href="/index.css" media="all" rel="stylesheet" type="text/css"></link>
+                                       </head>
+                                       <body>
+                                            <h1> Search for a Hotel!</h1>
+                                            <input type="text" id="searchBox"></input><button class="search-button">Search</button>
+                                            <p class="footer"> You're on <a href="/admin">node-{sys.props("akka.remote.netty.tcp.port")}</a></p>
+                                       </body>
+                                    </html>)
+         case GET(Path("/admin")) => Html(<html>
                                        <head>
-                                         <title>SEARCHY</title>
+                                         <title>HOTEL SEARCHY ADMIN</title>
                                        </head>
                                        <body>
                                             <h1> Node [{sys.props("akka.remote.netty.tcp.port")}]  actor tree</h1>
@@ -80,7 +95,8 @@ object Main {
            import scala.concurrent.Await
            import scala.concurrent.duration._
            FileResponse(Await.result(debug.DebugCollector.collectGraph(system, tops), 5.seconds))
-           
+        case GET(Path(name)) if resource(name).isFile =>
+          FileResponse(resource(name))
       }
     }
     //val plan = unfiltered.n
