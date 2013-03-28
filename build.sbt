@@ -12,7 +12,8 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-actor" % "2.2-M2",
   "com.typesafe.akka" %% "akka-cluster-experimental" % "2.2-M2",
   "org.specs2" %% "specs2" % "1.14" % "test",
-  "com.sleepycat" % "je" % "3.3.75"
+  "com.sleepycat" % "je" % "3.3.75",
+  "net.databinder" %% "unfiltered-netty-server" % "0.6.7"
 )
 
 scalacOptions ++= Seq("-feature", "-deprecation", "-optimise")
