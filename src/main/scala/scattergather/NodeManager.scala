@@ -45,6 +45,8 @@ class NodeManager(val id: String, val db: ActorRef) extends Actor with ActorLogg
       // Ensure the current topic data is saved, in a safe fashion that won't affect the
       // running of the search index.
       dbHandler ! SaveTopic(hotels)
+    case SaveCategory(topics) =>
+      dbHandler ! SaveCategory(topics)
     case BecomeTopic(hotels) =>
       killAndReplace(context.actorOf(Props(new TopicNode(hotels)), s"topic-$id-$changes"))
       changes += 1
@@ -116,14 +118,20 @@ object NodeManager {
   case class Split(hotels: Seq[Hotel]) extends InternalMessage
   // Tells us we need to ensure the current state of the hotel is saved.
   case class SaveTopic(hotels: Seq[Hotel]) extends InternalMessage
+  case class SaveCategory(topics: Seq[String]) extends InternalMessage
 }
 
+// This class is meant to keep track of all database tasks and ensure the dangerous ones occur,
+// as well as reducing the amount of database hits we perform if the search tree is under heavy
+// load.  It currently is pretty dumb.
 class DbWorker(val id: String, db: ActorRef) extends Actor {
-  def receive: Receive = {
-    case NodeManager.SaveTopic(hotels) =>
       // TODO - timeout and other insurances that we actually save
       // this should really have Ack and back-off, and possible a timeout to see
       // if we change before actually issuing db work.
+  def receive: Receive = {
+    case NodeManager.SaveTopic(hotels) =>
       db ! data.db.DbActor.SaveTopic(id, hotels map (_.id))
+    case NodeManager.SaveCategory(topics) =>
+      db ! data.db.DbActor.SaveCategory(id, topics)
   }
 }

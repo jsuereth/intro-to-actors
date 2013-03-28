@@ -30,13 +30,12 @@ class TopicSplitter(val db: ActorRef) extends Actor with ActorLogging {
         yield (db ? SaveTopic(childId, docs map (_.id))) map { ok => childId}
       
       for(future <- childIdFutures; id <- future) log.debug(s"Child topic [$id] saved...")
-         
-      val becomeCategoryMsg =
-        Future sequence childIdFutures map NodeManager.BecomeCategory.apply
-        
-      becomeCategoryMsg foreach { msg =>
-        log.debug(s"Sending msg: $msg")  
-      }
+      
+      val childIdsFuture = Future sequence childIdFutures
+      // TODO - Maybe the becomeCategoryMsg includes a boolean denoting "save"
+      val saveTopicMsg = childIdsFuture map NodeManager.SaveCategory.apply
+      val becomeCategoryMsg = childIdsFuture map NodeManager.BecomeCategory.apply
+      pipe(saveTopicMsg) to parent
       pipe(becomeCategoryMsg) to parent
   }
   /** TODO - do something amazing here.
