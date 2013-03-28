@@ -14,30 +14,44 @@ class NodeManager(val id: String, val db: ActorRef) extends Actor with ActorLogg
   var changes = 0;
   val splitter = context.actorOf(Props(new TopicSplitter(db)), "danger-mcgee-" + id)
   val dbHandler = context.actorOf(Props(new DbWorker(id, db)), "database-saver-" + id)
+  
+  var bufferedMessages = collection.mutable.ArrayBuffer.empty[(Any, ActorRef)]
   // TODO - supervisor strategy for sub-actor...
   
-  def sendToCurrent(msg: Any): Unit =
-    current foreach (_.tell(msg, sender))
+  // TODO - if we don't hav ea current, can we save messages?
+  def sendToCurrent(msg: Any, from: ActorRef): Unit = {
+    current match {
+      case Some(a) => a.tell(msg, from)
+      case _ => bufferedMessages append (msg -> from)
+    }
+  }
+  
+  def flushPending(): Unit = {
+    val tmp = bufferedMessages
+    bufferedMessages = collection.mutable.ArrayBuffer.empty
+    tmp foreach (sendToCurrent _).tupled
+  }
   
   def receive: Receive = debugHandler orElse {
     case q: SearchQuery => 
       // Send down to the child
       // TODO - intercept!
-      sendToCurrent(q)
+      sendToCurrent(q, sender)
     case add: AddHotel =>
-      sendToCurrent(add)
+      log.debug(s"Adding hotel: [${add.content.id}] to node[${id}]")
+      sendToCurrent(add, sender)
     // Internal Messages
     case SaveTopic(hotels) =>
       // Ensure the current topic data is saved, in a safe fashion that won't affect the
       // running of the search index.
-      
+      dbHandler ! SaveTopic(hotels)
     case BecomeTopic(hotels) =>
       killAndReplace(context.actorOf(Props(new TopicNode(hotels)), s"topic-$id-$changes"))
       changes += 1
     case BecomeCategory(childIds) =>
       val children =
         for(kid <- childIds)
-        yield context.actorOf(Props(new NodeManager(kid, db)), s"node-manager-k$id")
+        yield context.actorOf(Props(new NodeManager(kid, db)), s"node-manager-$kid-$changes")
       killAndReplace(context.actorOf(Props(new CategoryNode(children)), s"category-$id-$changes"))
       changes += 1
     case s @ Split(hotels: Seq[Hotel]) =>
@@ -90,6 +104,8 @@ class NodeManager(val id: String, val db: ActorRef) extends Actor with ActorLogg
   def killAndReplace(next: ActorRef): Unit = {
     current foreach (_ ! PoisonPill)
     current = Some(next)
+    // FLush messages we were holding on to.
+    flushPending()
   }
 }
 object NodeManager {

@@ -4,9 +4,10 @@ import collection.immutable.HashMap
 import akka.actor.{ReceiveTimeout, ActorRef, Actor,Props}
 import data.Hotel
 import debug.DebugActor
+import akka.actor.ActorLogging
 
-class TopicNode(hotels: Seq[Hotel]) extends Actor with DebugActor {
-  def maxNoOfDocuments: Int = 10
+class TopicNode(hotels: Seq[Hotel]) extends Actor with DebugActor with ActorLogging {
+  def maxNoOfDocuments: Int = 5
   // List of Hotel ids we us
   var hotelIds: Seq[String] = hotels map (_.id)
   var documents: Vector[Hotel] = hotels.toVector
@@ -22,8 +23,11 @@ class TopicNode(hotels: Seq[Hotel]) extends Actor with DebugActor {
   override def preStart(): Unit = regenerateIndex()
 
   /** Tell our parent to split as as soon as it is able... */
-  private def split(): Unit =
-    context.parent ! NodeManager.Split(hotels)
+  private def split(): Unit = {
+    // TODO - Keep track of the fact we're splitting and avoid trying to
+    // split again, but somehow feed new hotels up...
+    context.parent ! NodeManager.Split(documents)
+  }
   
   private def addHotelToLocalIndex(hotel: Hotel) = {
     hotelIds = hotelIds :+ hotel.id

@@ -11,9 +11,9 @@ object AdaptiveSearchTreeMain {
   
   def loadConfig: Config = ConfigFactory.load()
   
-  lazy val system = ActorSystem.create("search-example", loadConfig)
+  val system = ActorSystem.create("search-example", loadConfig)
   
-  lazy val dbSystem =
+  val dbSystem =
     system.actorOf(Props(new data.db.DbSupervisor(data.db.BerkeleyBackend.default)), "search-db")
   
   private def submitInitialDocuments(searchNode: ActorRef) =
@@ -33,13 +33,13 @@ object AdaptiveSearchTreeMain {
       )
     } {
      dbSystem ! data.db.DbActor.SaveHotel(hotel)
-     searchNode ! AddHotel(hotel) 
+     tree ! AddHotel(hotel) 
     }
   
   def submitTestData(): Unit =
     submitInitialDocuments(tree)
     
-  lazy val tree = {
+  val tree = {
    /* val searchnodedispatcher = Dispatchers.newExecutorBasedEventDrivenDispatcher("adaptive search tree")
         .withNewThreadPoolWithLinkedBlockingQueueWithCapacity(100)
         .setCorePoolSize(10)
@@ -55,25 +55,25 @@ object AdaptiveSearchTreeMain {
     searchTree
   }
   
-  lazy val cache = {
+  val cache = {
     system.actorOf(
         Props(new SearchCache(tree))
         .withDispatcher("search-cache-dispatcher"), "search-cache")
   }
   
-  lazy val throttle = {
+  val throttle = {
     system.actorOf(
         Props(new FrontEndThrottler(cache))
         .withDispatcher("front-end-dispatcher"), "throttler")
   }
   
-  lazy val frontend = {
+  val frontend = {
     system.actorOf(
         Props(new FrontEnd(throttle))
         .withDispatcher("front-end-dispatcher"), "front-end")
   }
   
-  lazy val echoActor =
+  val echoActor =
     system.actorOf(Props[EchoActor], "echo-actor")
   
   def query(query: String): Unit =

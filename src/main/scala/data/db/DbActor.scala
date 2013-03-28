@@ -19,7 +19,9 @@ class DbSupervisor(backend: StorageBackend) extends Actor with debug.DebugActor 
       // TODO - These exceptions should be wrapped.
       case _: com.sleepycat.je.DatabaseNotFoundException |
            _: com.sleepycat.je.EnvironmentLockedException => Escalate 
-      case _: com.sleepycat.je.DatabaseException => Restart
+      case ex: com.sleepycat.je.DatabaseException => 
+        log.debug("Restarting Db actor: ", ex)
+        Restart
       case _: Exception => Restart
     }
   // Note: We cannot override preRestart with this here.
@@ -41,11 +43,11 @@ class DbActor(backend: StorageBackend)  extends Actor with debug.DebugActor with
       sender ! ids.flatMap(store.hotels.get)
     case GetCategoryTopicNodeIds(id) =>
       val nodes = getCategoryNodes(id)
-      log.debug(s"DbActor: Found [$id] nodes: [${nodes mkString ","}]")
+      log.debug(s"Found [$id] nodes: [${nodes mkString ","}]")
       sender ! nodes
     case GetTopicHotels(topic) =>
       val hotels = getTopicHotels(topic)
-      log.debug(s"DbActor: Found [$topic] hotels: [${hotels map (_.id) mkString ","}]")
+      log.debug(s"Found [$topic] hotels: [${hotels map (_.id) mkString ","}]")
       sender ! hotels
     case SaveTopic(id, hotels) =>
       log.debug(s"Saving topic: [$id] with hotels [${hotels mkString ", "}]")

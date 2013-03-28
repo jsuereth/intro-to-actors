@@ -9,7 +9,7 @@ import debug.DebugActor
  * This class is responsible for splitting a given node into sub-topics,
  * and making that node be a category.
  */
-class TopicSplitter(val db: ActorRef) extends Actor {
+class TopicSplitter(val db: ActorRef) extends Actor with ActorLogging {
   import concurrent.Future
   import akka.pattern.{ask, pipe}
   import data.db.DbActor._
@@ -20,6 +20,7 @@ class TopicSplitter(val db: ActorRef) extends Actor {
   // to the parent with the result.
   def receive: Receive = {
     case TopicSplitter.Split(id, hotels) =>
+      log.debug(s"Splitting topic: [$id] from hotels: [${hotels map (_.id) mkString ","}]")
       val parent = sender
       implicit val timeout = Timeout(3, TimeUnit.SECONDS)
       import context.dispatcher
@@ -27,16 +28,26 @@ class TopicSplitter(val db: ActorRef) extends Actor {
       val childIdFutures: Seq[Future[String]] =
         for((childId, docs) <- splitIntoTopics(id, hotels))
         yield (db ? SaveTopic(childId, docs map (_.id))) map { ok => childId}
+      
+      for(future <- childIdFutures; id <- future) log.debug(s"Child topic [$id] saved...")
+         
       val becomeCategoryMsg =
         Future sequence childIdFutures map NodeManager.BecomeCategory.apply
+        
+      becomeCategoryMsg foreach { msg =>
+        log.debug(s"Sending msg: $msg")  
+      }
       pipe(becomeCategoryMsg) to parent
   }
-  /** TODO - do somethign amazing here.
+  /** TODO - do something amazing here.
    * Splits the set of hotels we host in the local index into new topics.
    * @return a sequence of topic name -> hosted Hotels.
    */
   def splitIntoTopics(parentId: String, hotels: Seq[Hotel]): Seq[(String, Seq[Hotel])] = 
-    for((docs, idx) <- (hotels grouped splitDocSize).zipWithIndex.toSeq)
+    for {
+      (docs, idx) <- (hotels grouped splitDocSize).zipWithIndex.toSeq
+      _ = log.debug(s"Split for topic: [$parentId-$idx], hotels [${docs map (_.id)}]")
+    }
     yield s"$parentId-$idx" -> docs
 }
 object TopicSplitter {
