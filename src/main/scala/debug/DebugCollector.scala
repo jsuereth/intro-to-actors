@@ -3,23 +3,31 @@ package debug
 import akka.actor._
 import akka.util.Timeout
 import java.util.concurrent.TimeUnit
+import scala.concurrent.Future
 
 object DebugCollector {
   
-  def collectGraph(system: ActorSystem, topLevels: Seq[ActorRef]): Unit = {
+  def collectGraph(system: ActorSystem, topLevels: Seq[ActorRef]): Future[java.io.File] = {
+    import akka.pattern.ask
+    import system.dispatcher
+    implicit val timeout = Timeout(3, TimeUnit.SECONDS)
     val collector = system.actorOf(Props[DebugCollectorActor])
     for(actor <- topLevels)
       actor.tell(GetName, collector)
+      
+    (collector ? GetPng).mapTo[java.io.File]
   }
 }
 
-
+case object GetPng
 class DebugCollectorActor extends Actor {
   val defaultTimeout = Timeout(2, TimeUnit.SECONDS)
-  
+  var listener: ActorRef = self
   var actors: Seq[ActorRef] = Seq.empty
   
   def receive: Receive = {
+    case GetPng =>
+      listener = sender
     case ref: ActorRef => 
       actors +:= ref
       context setReceiveTimeout defaultTimeout.duration
@@ -44,7 +52,10 @@ class DebugCollectorActor extends Actor {
     }
     
     val dotString = Graphs.toDotFile(actorGraph)(_.path.name)
-    makeAndOpenDotImage(dotString)
+    val tmp = java.io.File.createTempFile("dot", "png")
+    tmp.deleteOnExit()
+    makeDotImage(tmp, dotString)
+    listener ! tmp
   }
   
   def makeAndOpenDotImage(contents: String): Unit = {

@@ -30,13 +30,13 @@ object Main {
     val system = ActorSystem("ClusterSystem")
     
     // Every node starts a front end, but we only start the search tree in one node (for now...)
-    if(createSearchTree) runMainClusterNode(system)
-    else startFrontEnd(system)
+    if(createSearchTree) startMainNode(system)
+    else startSecondaryNode(system)
   }
 
   // NOTE - This is very bad.  IT's a hack because we lamed out and used
   // Berkeley DB instead of Riak.
-  def runMainClusterNode(system: ActorSystem): Unit = {
+  def startMainNode(system: ActorSystem): Unit = {
     
     val dbSystem =
       system.actorOf(Props(new data.db.DbSupervisor(data.db.BerkeleyBackend.default)), "search-db")
@@ -46,16 +46,20 @@ object Main {
     val tree =
       system.actorOf(Props(new NodeManager("top", dbSystem, true))
         .withDispatcher("search-tree-dispatcher"), "search-tree")
-
     frontend ! RegisterTree(tree)
     
-    startWebServer()
+    startWebServer(system, Seq(tree, frontend), 8888)
   }
 
+  def startSecondaryNode(system: ActorSystem) {
+    val frontend = startFrontEnd(system)
+    startWebServer(system, Seq(frontend), 8889)
+  }
+  
   def startFrontEnd(system: ActorSystem): ActorRef =
     system.actorOf(Props[FrontEnd].withDispatcher("search-cache-dispatcher"), "search-front-end")
   
-  def startWebServer(): Unit = {
+  def startWebServer(system: ActorSystem, tops: Seq[ActorRef], port: Int): Unit = {
     import unfiltered._
     import request._
     import response._
@@ -64,16 +68,25 @@ object Main {
       def intent = {
          case GET(Path("/")) => Html(<html>
                                        <head>
-                                         <title>WOAH</title>
+                                         <title>SEARCHY</title>
                                        </head>
-                                       <body> HI </body>
+                                       <body>
+                                            <h1> Node [{sys.props("akka.remote.netty.tcp.port")}]  actor tree</h1>
+                                            <img src="/tree.png"/>
+                                       </body>
                                        </html>)
+                                       
+         case GET(Path("/tree.png")) =>
+           import scala.concurrent.Await
+           import scala.concurrent.duration._
+           FileResponse(Await.result(debug.DebugCollector.collectGraph(system, tops), 5.seconds))
+           
       }
     }
     //val plan = unfiltered.n
-    val http = Http(8080).handler(App).run { s => 
+    val http = Http(port).handler(App).run { s => 
       val d= java.awt.Desktop.getDesktop
-      d.browse(new java.net.URI("http://localhost:8080/"))
+      d.browse(new java.net.URI(s"http://localhost:$port/"))
     }
   }
   
@@ -108,79 +121,20 @@ object Main {
 }
 
 
-
-object SearchSystem {
-  def loadConfig: Config = ConfigFactory.load()
-  
-  val system = ActorSystem.create("search-example", loadConfig)
-  
-  val dbSystem =
-    system.actorOf(Props(new data.db.DbSupervisor(data.db.BerkeleyBackend.default)), "search-db")
-  
-  // TODO - Only when not in debug mode...
-  saveInitialData()
-    
-  val tree = {   
-    val searchTree = system.actorOf(
-        Props(new NodeManager("test", dbSystem, true))
-        .withDispatcher("search-tree-dispatcher"), "search-tree")
-    searchTree
+import unfiltered.response._
+/** Returns a file as an unfiltered response. */
+case class FileResponse(file: java.io.File) extends ResponseStreamer {
+  override def stream(os: java.io.OutputStream): Unit = {
+     val in = new java.io.FileInputStream(file)
+     val buf = new Array[Byte](64*1024)
+     def read(): Unit = in read buf match {
+       case -1 => ()
+       case n =>
+         os.write(buf, 0, n)
+         read()
+     }
+     read()
   }
-  
-  val frontend = {
-    system.actorOf(
-        Props(new FrontEnd)
-        .withDispatcher("front-end-dispatcher"), "front-end")
-  }
-  
-  frontend ! RegisterTree(tree)
-  
-  val echoActor =
-    system.actorOf(Props[EchoActor], "echo-actor")
-    
-  def shutdown(): Unit = system.shutdown()
-  
-  
-  def saveInitialData() =
-    for { hotel <- Seq(
-        Hotel("1", "Hilton 1", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("2", "Hilton 2", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("3", "Hilton 3", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("4", "Hilton 4", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("5", "Hilton 5", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("6", "Hilton 6", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("7", "Hilton 7", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("8", "Hilton 8", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("9", "Hilton 9", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("10", "Hilton 10", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("11", "Hilton 11", "A nice hotel", Location("123 Street St", "New York", "USA")),
-        Hotel("12", "Hilton 12", "A nice hotel", Location("123 Street St", "New York", "USA"))
-      )
-    } {
-     SearchSystem.dbSystem ! data.db.DbActor.SaveHotel(hotel)
-     // TODO - Save topics and categories.
-     SearchSystem.dbSystem ! data.db.DbActor.SaveTopic("topic-1", Seq("1", "2", "3"))
-     SearchSystem.dbSystem ! data.db.DbActor.SaveTopic("topic-2", Seq("4", "5", "6"))
-     SearchSystem.dbSystem ! data.db.DbActor.SaveTopic("topic-3", Seq("7", "8", "9"))
-     SearchSystem.dbSystem ! data.db.DbActor.SaveTopic("topic-4", Seq("10", "11", "12"))
-     SearchSystem.dbSystem ! data.db.DbActor.SaveCategory("test", Seq("category-6", "category-7"))
-     //SearchSystem.dbSystem ! data.db.DbActor.SaveCategory("category-1", Seq("category-6", "category-7"))
-     SearchSystem.dbSystem ! data.db.DbActor.SaveCategory("category-6", Seq("topic-1", "topic-2"))
-     SearchSystem.dbSystem ! data.db.DbActor.SaveCategory("category-7", Seq("topic-3", "topic-4"))
-    }
-}
-
-object AdaptiveSearchTreeMain {
-  
-  def query(query: String): Unit =
-    SearchSystem.frontend.tell(_root_.scattergather.SearchQuery(query, 10), SearchSystem.echoActor)
-  
-  def showTree(): Unit = {
-    debug.DebugCollector.collectGraph(SearchSystem.system, Seq(SearchSystem.tree, SearchSystem.frontend))
-  }
-    
-    
-  def shutdown(): Unit = SearchSystem.shutdown()
 }
 
 
