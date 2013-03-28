@@ -14,12 +14,18 @@ class NodeManager(val id: String, val db: ActorRef) extends Actor with ActorLogg
   var changes = 0;
   val splitter = context.actorOf(Props(new TopicSplitter(db)), "danger-mcgee-" + id)
   val dbHandler = context.actorOf(Props(new DbWorker(id, db)), "database-saver-" + id)
+  val stats = context.actorOf(Props[StatisticsCollector], "stats")
   var bufferedMessages = collection.mutable.ArrayBuffer.empty[(Any, ActorRef)]
   // TODO - supervisor strategy for sub-actor...
   
   def sendToCurrent(msg: Any, from: ActorRef): Unit = {
     current match {
-      case Some(a) => a.tell(msg, from)
+      case Some(a) =>
+        msg match {
+          case q: SearchQuery => context.actorOf(Props(new StatisticsInterceptor(stats, from, a, msg)))
+          case _ => a.tell(msg, from)
+        }
+        
       case _ => 
         log.info(s"Buffering message: $msg from $from")
         bufferedMessages append (msg -> from)
