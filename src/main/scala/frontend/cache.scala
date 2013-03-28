@@ -4,6 +4,7 @@ import akka.actor.{ReceiveTimeout, ActorRef, Actor, Props
 }
 import scattergather.{SearchQuery => Query,QueryResponse}
 import concurrent.duration._
+import akka.actor.ActorLogging
 
 /** A caching actor for the search tree.  This will cache any successful query results into
  * the cache.
@@ -11,7 +12,7 @@ import concurrent.duration._
  * Note: this does not *AGE* the cache right now, nor does it go make it up-to-date as
  * the search tree evolves.  In annoying fashion, we leave that as an exercise for the reader :).
  */
-class SearchCache(index: ActorRef) extends Actor with debug.DebugActor {
+class SearchCache(index: ActorRef) extends Actor with debug.DebugActor with ActorLogging {
   def receive: Receive = debugHandler orElse {
     // Hack for behavior...
     case Query("DROP", _) => //Ignore for timeout...
@@ -26,12 +27,13 @@ class SearchCache(index: ActorRef) extends Actor with debug.DebugActor {
   def issueSearch(q: Query): Unit = {
     (cache get q.query) match {
         case Some(response) => 
-          println("Repsonding ["+q.query+"] with cache!")
+          log.debug("Repsonding ["+q.query+"] with cache!")
           sender ! response
         case _ => 
           // Adapt the query so we have a chance to add it to our cache.
+          val client = sender
           val interceptor = context.actorOf(
-              Props(new CacheInterceptor(self, sender, q.query))
+              Props(new CacheInterceptor(self, client, q.query))
               .withDispatcher(context.dispatcher.id))
           index.tell(Query(q.query, q.maxDocs), interceptor)
       }
@@ -51,7 +53,7 @@ class CacheInterceptor(cache: ActorRef, listener: ActorRef, query: String) exten
       listener ! q
       if(!q.failed) cache ! AddToCache(query, q)
       context stop self
-    case _: ReceiveTimeout =>
+    case ReceiveTimeout =>
       // If the query took to long, w assume a failure, and shut ourselves down.
       // TODO - For nicety, perhaps we should warn the user?
       context stop self

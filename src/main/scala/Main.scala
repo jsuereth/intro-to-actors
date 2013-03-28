@@ -73,17 +73,11 @@ object AdaptiveSearchTreeMain {
         .withDispatcher("front-end-dispatcher"), "front-end")
   }
   
-  lazy val echoActor = {
-    system.actorOf(
-        Props(new Actor {
-          def receive: Receive = {
-            case msg => println(msg)
-          }
-        }), "echo-actor")
-  }
+  lazy val echoActor =
+    system.actorOf(Props[EchoActor], "echo-actor")
   
-  def query(query: String): Unit = 
-    frontend.tell(_root_.frontend.SearchQuery(query, 10), echoActor)
+  def query(query: String): Unit =
+    cache.tell(_root_.scattergather.SearchQuery(query, 10), echoActor)
   
   def showTree(): Unit = {
     debug.DebugCollector.collectGraph(system, Seq(tree, throttle, frontend, cache))
@@ -91,4 +85,14 @@ object AdaptiveSearchTreeMain {
     
     
   def shutdown(): Unit = system.shutdown()
+}
+
+
+class EchoActor extends Actor {
+  def receive: Receive = {
+            case f: Function1[_,_] => 
+              println(f.getClass)
+              println(f.asInstanceOf[Function1[AnyRef, AnyRef]](null))
+            case msg => println(msg)
+          }
 }

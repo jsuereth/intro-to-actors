@@ -2,8 +2,6 @@ package scattergather
 
 import akka.actor._
 import data.Hotel
-import scattergather.NodeManager.BecomeTopic
-import scala.collection.immutable.HashMap
 import debug.DebugActor
 
 
@@ -13,8 +11,9 @@ import debug.DebugActor
 class NodeManager(val id: String, val db: ActorRef) extends Actor with ActorLogging with DebugActor {
   import NodeManager._
   var current: Option[ActorRef] = None
+  var changes = 0;
   val splitter = context.actorOf(Props(new TopicSplitter(db)), "danger-mcgee-" + id)
-
+  val dbHandler = context.actorOf(Props(new DbWorker(id, db)), "database-saver-" + id)
   // TODO - supervisor strategy for sub-actor...
   
   def sendToCurrent(msg: Any): Unit =
@@ -26,16 +25,21 @@ class NodeManager(val id: String, val db: ActorRef) extends Actor with ActorLogg
       // TODO - intercept!
       sendToCurrent(q)
     case add: AddHotel =>
-      // TODO Manipulate db for our node?
       sendToCurrent(add)
     // Internal Messages
+    case SaveTopic(hotels) =>
+      // Ensure the current topic data is saved, in a safe fashion that won't affect the
+      // running of the search index.
+      
     case BecomeTopic(hotels) =>
-      killAndReplace(context.actorOf(Props(new TopicNode(hotels)), "topic-" + id))
+      killAndReplace(context.actorOf(Props(new TopicNode(hotels)), s"topic-$id-$changes"))
+      changes += 1
     case BecomeCategory(childIds) =>
       val children =
-        for(id <- childIds)
-        yield context.actorOf(Props(new NodeManager(id, db)), s"node-manager-$id")
-      killAndReplace(context.actorOf(Props(new CategoryNode(children)), "category-"+id))
+        for(kid <- childIds)
+        yield context.actorOf(Props(new NodeManager(kid, db)), s"node-manager-k$id")
+      killAndReplace(context.actorOf(Props(new CategoryNode(children)), s"category-$id-$changes"))
+      changes += 1
     case s @ Split(hotels: Seq[Hotel]) =>
       // TODO - figure out how to split...
       log.debug(s"Splitting node[$id]")
@@ -94,43 +98,16 @@ object NodeManager {
   case class BecomeCategory(children: Seq[String]) extends InternalMessage
   // Construct a new Category after splitting these hotels. 
   case class Split(hotels: Seq[Hotel]) extends InternalMessage
+  // Tells us we need to ensure the current state of the hotel is saved.
+  case class SaveTopic(hotels: Seq[Hotel]) extends InternalMessage
 }
 
-/**
- * This class is responsible for splitting a given node into sub-topics,
- * and making that node be a category.
- */
-class TopicSplitter(val db: ActorRef) extends Actor with DebugActor {
-  import concurrent.Future
-  import akka.pattern.{ask, pipe}
-  import data.db.DbActor._
-  import akka.util.Timeout
-  import java.util.concurrent.TimeUnit
-  def splitDocSize = 2
-  // This actor just attempts to split nodes and then returns
-  // to the parent with the result.
-  def receive: Receive = debugHandler orElse {
-    case TopicSplitter.Split(id, hotels) =>
-      val parent = sender
-      implicit val timeout = Timeout(3, TimeUnit.SECONDS)
-      import context.dispatcher
-      // Split the documents and save the topics we're about to load somewhere else.
-      val childIdFutures: Seq[Future[String]] =
-        for((childId, docs) <- splitIntoTopics(id, hotels))
-        yield (db ? SaveTopic(childId, docs map (_.id))) map { ok => childId}
-      val becomeCategoryMsg =
-        Future sequence childIdFutures map NodeManager.BecomeCategory.apply
-      pipe(becomeCategoryMsg) to parent
+class DbWorker(val id: String, db: ActorRef) extends Actor {
+  def receive: Receive = {
+    case NodeManager.SaveTopic(hotels) =>
+      // TODO - timeout and other insurances that we actually save
+      // this should really have Ack and back-off, and possible a timeout to see
+      // if we change before actually issuing db work.
+      db ! data.db.DbActor.SaveTopic(id, hotels map (_.id))
   }
-  /** TODO - do somethign amazing here.
-   * Splits the set of hotels we host in the local index into new topics.
-   * @return a sequence of topic name -> hosted Hotels.
-   */
-  def splitIntoTopics(parentId: String, hotels: Seq[Hotel]): Seq[(String, Seq[Hotel])] = 
-    for((docs, idx) <- (hotels grouped splitDocSize).zipWithIndex.toSeq)
-    yield s"$parentId-$idx" -> docs
 }
-object TopicSplitter {
-  case class Split(id: String, hotels: Seq[Hotel])
-}
-

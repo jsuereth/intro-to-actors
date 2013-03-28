@@ -27,11 +27,10 @@ class TopicNode(hotels: Seq[Hotel]) extends Actor with DebugActor {
   
   private def addHotelToLocalIndex(hotel: Hotel) = {
     hotelIds = hotelIds :+ hotel.id
-    // TODO - Save this topic!
-    //db ! data.db.DbActor.SaveTopic(id, hotelIds)
     // TODO - Load the hotel when needed.
     documents = documents :+ hotel
-
+    // Tell our parent we need to be saved with the new documents...
+    context.parent ! NodeManager.SaveTopic(documents)
     // Even if we split, we continue serving documents until the new
     // node is ready.
     if (documents.size > maxNoOfDocuments) split()

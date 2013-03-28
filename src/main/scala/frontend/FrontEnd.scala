@@ -2,6 +2,7 @@ package frontend
 
 
 import akka.actor.{Actor,ActorRef}
+import scattergather.SearchQuery
 
 class FrontEnd(searchService: ActorRef) extends Actor with debug.DebugActor {
   def receive: Receive = debugHandler orElse {

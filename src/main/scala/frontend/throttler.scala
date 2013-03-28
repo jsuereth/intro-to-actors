@@ -3,6 +3,7 @@ package frontend
 import akka.actor.{Actor,ActorRef, ReceiveTimeout, Props, ActorLogging}
 import concurrent.duration._
 import scattergather.QueryResponse
+import scattergather.SearchQuery
 
 object Defaults {
   val badQueryResponse = QueryResponse(Seq.empty, true)
@@ -11,8 +12,6 @@ object Defaults {
 class FrontEndThrottler(tree: ActorRef) extends Actor with debug.DebugActor with ActorLogging {
   def receive: Receive = debugHandler orElse {
     case q: SearchQuery => 
-      issueQuery(scattergather.SearchQuery(q.query, q.maxDocs), sender)
-    case q: scattergather.SearchQuery =>
       issueQuery(q, sender)
     case TimedOut =>
       log.debug("Query timeout!")
@@ -29,13 +28,14 @@ class FrontEndThrottler(tree: ActorRef) extends Actor with debug.DebugActor with
       // Slowly lower count until we're back to normal and allow some through.
       badQueryCount -= 1
       client ! Defaults.badQueryResponse
-    }
-    else {
+    } else {
       val timeout = currentTimeout
-      val timer = context.actorOf(Props(new QueryTimer(timeout, client, self, 
+      val me = self
+      val timer = context.actorOf(Props(new QueryTimer(timeout, client, me, 
           Defaults.badQueryResponse)).withDispatcher(context.dispatcher.id))
       tree.tell(scattergather.SearchQuery(q.query, q.maxDocs), timer)
     }
+
   def currentTimeout: Duration = 1.seconds
 }
 
@@ -43,7 +43,7 @@ class FrontEndThrottler(tree: ActorRef) extends Actor with debug.DebugActor with
 case object TimedOut
 case object Success
 
-class QueryTimer(timeout: Duration, to: ActorRef, throttler: ActorRef, default: QueryResponse) extends Actor {
+class QueryTimer(timeout: Duration, to: ActorRef, throttler: ActorRef, defaultResponse: QueryResponse) extends Actor {
   context.setReceiveTimeout(timeout)
   def receive: Receive = {
     case x: scattergather.QueryResponse =>
@@ -52,7 +52,7 @@ class QueryTimer(timeout: Duration, to: ActorRef, throttler: ActorRef, default: 
       context stop self
     case ReceiveTimeout => 
       throttler ! TimedOut
-      to ! default
+      to ! defaultResponse
       context stop self
   }
 }
