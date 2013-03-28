@@ -16,17 +16,44 @@ class TopicSplitter(val db: ActorRef) extends Actor with ActorLogging {
   import akka.util.Timeout
   import java.util.concurrent.TimeUnit
   def splitDocSize = 2
+  
+  var currentSplitId: String = ""
+  var currentSplitHotels: Seq[Hotel] = Seq.empty
+  val splitTimeout = Timeout(10, TimeUnit.MILLISECONDS)
+  
   // This actor just attempts to split nodes and then returns
   // to the parent with the result.
+  // It's possible we could get more splits in the meantime, so we become a new "wait for all splits
+  // state.
   def receive: Receive = {
     case TopicSplitter.Split(id, hotels) =>
-      log.debug(s"Splitting topic: [$id] from hotels: [${hotels map (_.id) mkString ","}]")
+      context become waitForAllSplits
+      assert(currentSplitId == id)
+      currentSplitId = id
+      currentSplitHotels = hotels
+      context setReceiveTimeout splitTimeout.duration
+  }
+  val waitForAllSplits: Receive = {
+    case TopicSplitter.Split(id, hotels) =>
+      assert(currentSplitId == id)
+      currentSplitId = id
+      currentSplitHotels = hotels
+      context setReceiveTimeout splitTimeout.duration
+    case ReceiveTimeout => 
+      doSplit()
+      context unbecome ()
+  }
+  
+  
+  
+  def doSplit(): Unit = {
+      log.info(s"Splitting topic: [$currentSplitId] from hotels: [${currentSplitHotels map (_.id) mkString ","}]")
       val parent = sender
       implicit val timeout = Timeout(3, TimeUnit.SECONDS)
       import context.dispatcher
       // Split the documents and save the topics we're about to load somewhere else.
       val childIdFutures: Seq[Future[String]] =
-        for((childId, docs) <- splitIntoTopics(id, hotels))
+        for((childId, docs) <- splitIntoTopics(currentSplitId, currentSplitHotels))
         yield (db ? SaveTopic(childId, docs map (_.id))) map { ok => childId}
       
       for(future <- childIdFutures; id <- future) log.debug(s"Child topic [$id] saved...")

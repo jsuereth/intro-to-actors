@@ -18,9 +18,10 @@ class SearchCache(index: ActorRef) extends Actor with debug.DebugActor with Acto
     case Query("DROP", _) => //Ignore for timeout...
     case q: Query => issueSearch(q)
     case AddToCache(q, r) =>
-      println("Caching ["+q+"]!")
+      log.info("Caching Query ["+q+"] results!")
       cache += q -> r
     case Invalidate(q) =>
+      log.info("Invalidating query ["+q+"] cache!")
       cache -= q
   }
   

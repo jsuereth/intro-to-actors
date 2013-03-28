@@ -14,22 +14,36 @@ class NodeManager(val id: String, val db: ActorRef) extends Actor with ActorLogg
   var changes = 0;
   val splitter = context.actorOf(Props(new TopicSplitter(db)), "danger-mcgee-" + id)
   val dbHandler = context.actorOf(Props(new DbWorker(id, db)), "database-saver-" + id)
-  
   var bufferedMessages = collection.mutable.ArrayBuffer.empty[(Any, ActorRef)]
   // TODO - supervisor strategy for sub-actor...
   
-  // TODO - if we don't hav ea current, can we save messages?
   def sendToCurrent(msg: Any, from: ActorRef): Unit = {
     current match {
       case Some(a) => a.tell(msg, from)
-      case _ => bufferedMessages append (msg -> from)
+      case _ => 
+        log.info(s"Buffering message: $msg from $from")
+        bufferedMessages append (msg -> from)
     }
   }
-  
+  /** Flushes all pending messages to the current "implementation" actor. */
   def flushPending(): Unit = {
     val tmp = bufferedMessages
     bufferedMessages = collection.mutable.ArrayBuffer.empty
     tmp foreach (sendToCurrent _).tupled
+  }
+  
+  /** Kills our current actor, replaces with a new one and sends pending messages. */
+  def killAndReplace(next: ActorRef): Unit = {
+    current foreach (_ ! PoisonPill)
+    current = Some(next)
+    // Flush messages we were holding on to.
+    log.info(s"Flushing buffered messages to $next")
+    flushPending()
+  }
+  
+  def killAndHoldMessages(): Unit = {
+    current foreach (_ ! PoisonPill)
+    current = None
   }
   
   def receive: Receive = debugHandler orElse {
@@ -51,13 +65,15 @@ class NodeManager(val id: String, val db: ActorRef) extends Actor with ActorLogg
       killAndReplace(context.actorOf(Props(new TopicNode(hotels)), s"topic-$id-$changes"))
       changes += 1
     case BecomeCategory(childIds) =>
+      // TODO - We shouldn't see this happpening a lot...
+      log.info(s"node [$id] is becoming a category of [${childIds mkString ","}]")
       val children =
         for(kid <- childIds)
-        yield context.actorOf(Props(new NodeManager(kid, db)), s"node-manager-$kid-$changes")
+        yield CategoryChild(Props(new NodeManager(kid, db)), s"node-manager-$kid-$changes")
       killAndReplace(context.actorOf(Props(new CategoryNode(children)), s"category-$id-$changes"))
       changes += 1
     case s @ Split(hotels: Seq[Hotel]) =>
-      // TODO - figure out how to split...
+      killAndHoldMessages()
       log.debug(s"Splitting node[$id]")
       splitter ! TopicSplitter.Split(id, hotels)
       // We continue servicing requests, even as we try to split.
@@ -102,13 +118,7 @@ class NodeManager(val id: String, val db: ActorRef) extends Actor with ActorLogg
     // Feed this future to use when we're ready for it.
     pipe(categoryInitMsg fallbackTo topicInitMsg) to self
   }
-  
-  def killAndReplace(next: ActorRef): Unit = {
-    current foreach (_ ! PoisonPill)
-    current = Some(next)
-    // FLush messages we were holding on to.
-    flushPending()
-  }
+
 }
 object NodeManager {
   sealed trait InternalMessage

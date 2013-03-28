@@ -4,7 +4,12 @@ import collection.immutable.HashMap
 import akka.actor.{ReceiveTimeout, ActorRef, Actor,Props}
 import debug.DebugActor
 
-class CategoryNode(children: Seq[ActorRef]) extends Actor with DebugActor {
+case class CategoryChild(props: Props, id: String)
+
+class CategoryNode(childProps: Seq[CategoryChild]) extends Actor with DebugActor {
+  val children = childProps map { case CategoryChild(props, id) =>
+    context.actorOf(props, id)  
+  }
   var currentIdx = 0
   def receive: Receive = debugHandler orElse {
     case SearchQuery(q, max) =>
