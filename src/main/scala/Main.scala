@@ -6,7 +6,47 @@ import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.dispatch.Dispatchers
 import java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy
 import com.typesafe.config.{ConfigFactory, Config}
+import akka.actor.ActorLogging
+import akka.cluster.ClusterEvent.CurrentClusterState
+import akka.cluster.ClusterEvent.MemberUp
+import akka.cluster.ClusterEvent.UnreachableMember
+import akka.cluster.ClusterEvent.ClusterDomainEvent
+import akka.cluster.Cluster
 
+
+
+object Main {
+  
+  def main(args: Array[String]): Unit = {
+    // Parse args
+    if (args.nonEmpty) System.setProperty("akka.remote.netty.tcp.port", args(0))
+    else {
+      System.err.println(s"Invalid argumnets [${args mkString " "}]!")
+      System.err.println("usage: cluster <port> <true|false>")
+      System.exit(1)
+    }
+    val createSearchTree = (args drop 1).headOption filter (_ == "true") getOrElse false 
+    
+    // Create an Akka system
+    val system = ActorSystem("ClusterSystem")
+    
+    // TODO - Figure out how to update the search tree to work across cluster nodes...
+    val clusterListener = system.actorOf(Props(new Actor with ActorLogging {
+      def receive = {
+        case state: CurrentClusterState ⇒
+          log.info("Current members: {}", state.members)
+        case MemberUp(member) ⇒
+          log.info("Member is Up: {}", member)
+        case UnreachableMember(member) ⇒
+          log.info("Member detected as unreachable: {}", member)
+        case _: ClusterDomainEvent ⇒ // ignore
+ 
+      }
+    }), name = "clusterListener")
+ 
+    Cluster(system).subscribe(clusterListener, classOf[ClusterDomainEvent])
+  }
+}
 
 object SearchSystem {
   def loadConfig: Config = ConfigFactory.load()
