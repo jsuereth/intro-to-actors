@@ -4,6 +4,7 @@ import akka.actor._
 import akka.util.Timeout
 import java.util.concurrent.TimeUnit
 import scala.concurrent.Future
+import akka.cluster.Cluster
 
 object DebugCollector {
   
@@ -21,6 +22,7 @@ object DebugCollector {
 
 case object GetPng
 class DebugCollectorActor extends Actor {
+  val cluster = Cluster(context.system)
   val defaultTimeout = Timeout(2, TimeUnit.SECONDS)
   var listener: ActorRef = self
   var actors: Seq[ActorRef] = Seq.empty
@@ -50,7 +52,6 @@ class DebugCollectorActor extends Actor {
         } yield EmptyEdge[ActorRef](n, n2)
       }
     }
-    
     val dotString = Graphs.toDotFile(actorGraph)(_.path.name)
     val tmp = java.io.File.createTempFile("dot", "png")
     tmp.deleteOnExit()

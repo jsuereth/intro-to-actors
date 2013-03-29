@@ -42,4 +42,7 @@ class FrontEnd extends Actor with debug.DebugActor with ActorLogging {
         _.tell(scattergather.SearchQuery(query, maxDocs), sender)
       }
   }
+  
+  override def debugChildren =
+    (searchService.toSeq ++ context.children)
 }

@@ -59,7 +59,7 @@ object Main {
     import akka.contrib.pattern.ClusterSingletonManager
     system.actorOf(Props(
         new ClusterSingletonManager(
-          singletonProps = _ => Props(new TreeTop("top", db)),
+          singletonProps = _ => Props(new NodeManager("top", db)),
           singletonName = "search-tree",
           terminationMessage = PoisonPill,
           role = None)),
