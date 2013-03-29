@@ -46,8 +46,6 @@ object Main {
     val tree =
       system.actorOf(Props(new NodeManager("top", dbSystem, true))
         .withDispatcher("search-tree-dispatcher"), "search-back-end")
-    frontend ! RegisterTree(tree)
-    
     startWebServer(system, frontend, 8888, Some(tree))
   }
 
