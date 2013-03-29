@@ -45,59 +45,99 @@ object Main {
     val frontend = startFrontEnd(system)
     val tree =
       system.actorOf(Props(new NodeManager("top", dbSystem, true))
-        .withDispatcher("search-tree-dispatcher"), "search-tree")
+        .withDispatcher("search-tree-dispatcher"), "search-back-end")
     frontend ! RegisterTree(tree)
     
-    startWebServer(system, Seq(tree, frontend), 8888)
+    startWebServer(system, frontend, 8888, Some(tree))
   }
 
   def startSecondaryNode(system: ActorSystem) {
     val frontend = startFrontEnd(system)
-    startWebServer(system, Seq(frontend), 8889)
+    startWebServer(system, frontend, 8889)
   }
   
   def startFrontEnd(system: ActorSystem): ActorRef =
     system.actorOf(Props[FrontEnd].withDispatcher("search-cache-dispatcher"), "search-front-end")
   
-  def startWebServer(system: ActorSystem, tops: Seq[ActorRef], port: Int): Unit = {
+  def startWebServer(system: ActorSystem, frontend: ActorRef, port: Int, backend: Option[ActorRef] = None): Unit = {
     import unfiltered._
     import request._
     import response._
     import netty._
+    import scala.concurrent.Await
+    import scala.concurrent.duration._
     object App extends cycle.Plan with cycle.SynchronousExecution with ServerErrorResponse {
+      
+      object QueryParam extends Params.Extract("q", Params.first)
       
       def resource(name: String): java.io.File =
         new java.io.File("www" + name)
       
       def intent = {
-        case GET(Path("/")) => Html(<html>
-                                      <head>
-                                         <title>HOTEL SEARCHY APP</title>
-                                         <link href="/index.css" media="all" rel="stylesheet" type="text/css"></link>
-                                       </head>
-                                       <body>
-                                            <h1> Search for a Hotel!</h1>
-                                            <input type="text" id="searchBox"></input><button class="search-button">Search</button>
-                                            <p class="footer"> You're on <a href="/admin">node-{sys.props("akka.remote.netty.tcp.port")}</a></p>
-                                       </body>
-                                    </html>)
-         case GET(Path("/admin")) => Html(<html>
-                                       <head>
-                                         <title>HOTEL SEARCHY ADMIN</title>
-                                       </head>
-                                       <body>
-                                            <h1> Node [{sys.props("akka.remote.netty.tcp.port")}]  actor tree</h1>
-                                            <img src="/tree.png"/>
-                                       </body>
-                                       </html>)
-                                       
-         case GET(Path("/tree.png")) =>
-           import scala.concurrent.Await
-           import scala.concurrent.duration._
-           FileResponse(Await.result(debug.DebugCollector.collectGraph(system, tops), 5.seconds))
+        case GET(Path("/")) => 
+          mainView("Hotel Search App", 
+              css = Seq("/index.css"),
+              js = Seq("/jquery.js", "/index.js")) {
+             <h1> Search for a Hotel!</h1>
+             <input type="text" id="searchBox"></input><button id="searchButton">Search</button>
+             <div id="hotelList"></div>
+             <p class="footer">You're on <a href="/admin">{nodeName}</a></p>
+          }
+        case (Path("/query") & Params(QueryParam(query))) => 
+            try {
+              val result = Await.result(_root_.frontend.FrontEnd.executeQuery(system, frontend, query), 3.seconds)
+              def toJson(hotel: data.Hotel): String =
+                s"""|{
+                    |  "id": "${hotel.id}",
+                    |  "name": "${hotel.name}",
+                    |  "description": "${hotel.description}",
+                    |  "city": "${hotel.location.city}"
+                    |}""".stripMargin
+            // Run the query and respond!
+            JsonContent ~> ResponseString(s"""|{
+                               |  "success":"true",
+                               |  "results": [
+                               |    ${result map toJson mkString ","}
+                               |  ]               
+                               |}""".stripMargin)
+            } catch {
+              case ex: Exception =>
+                JsonContent ~> ResponseString(s"""{ "success": "false" }""")
+            }
+          
+        case GET(Path("/admin")) => 
+          mainView("Hotel Search Admin") { 
+            <h1> Node {nodeName} </h1>
+            <img src="/tree.png"/>
+          }
+        case GET(Path("/tree.png")) =>
+          FileResponse(Await.result(debug.DebugCollector.collectGraph(system, backend.toSeq :+ frontend), 5.seconds))
         case GET(Path(name)) if resource(name).isFile =>
           FileResponse(resource(name))
       }
+      
+      def nodeName: String = s"Node [${sys.props("akka.remote.netty.tcp.port")}]"
+
+      def mainView(title: String,
+          css: Seq[String] = Seq.empty,
+          js: Seq[String] = Seq.empty
+          )(body: scala.xml.NodeSeq): response.Html =
+        Html(<html>
+               <head>
+                 <title>HOTEL SEARCHY APP</title>
+                 {
+                   for(src <- css)
+                   yield <link href={src} media="all" rel="stylesheet" type="text/css"></link>
+                 }
+               </head>
+               <body>
+                 {body}
+                 {
+                   for(src <- js)
+                   yield <script type="text/javascript" src={src}></script>
+                 }
+               </body>
+             </html>)
     }
     //val plan = unfiltered.n
     val http = Http(port).handler(App).run { s => 

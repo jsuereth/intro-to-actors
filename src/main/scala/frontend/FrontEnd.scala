@@ -1,12 +1,27 @@
 package frontend
 
 
-import akka.actor.{Actor,ActorRef, Props}
-import scattergather.SearchQuery
+import akka.actor.{Actor,ActorRef, Props,ActorSystem}
+import scattergather.{SearchQuery, QueryResponse}
 import akka.actor.ActorLogging
+import scala.concurrent.Future
 
 case class RegisterTree(tree: ActorRef)
-
+object FrontEnd {
+  def executeQuery(system: ActorSystem, frontend: ActorRef, query: String, maxDocs: Int = 20): Future[Seq[data.Hotel]] = {
+    import concurrent._
+    import duration._
+    import akka.util.Timeout
+    import akka.pattern.ask
+    import system.dispatcher
+    implicit val defaultTimeout = Timeout(3.seconds)
+    val result = (frontend ? SearchQuery(query, maxDocs)).mapTo[QueryResponse]
+    result map { q =>
+      if(q.failed) sys.error("Query failed")
+      else q.results.map(_._2)
+    }
+  }
+}
 class FrontEnd extends Actor with debug.DebugActor with ActorLogging {
   var searchService: Option[ActorRef] = None
   def receive: Receive = debugHandler orElse {
