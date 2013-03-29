@@ -3,14 +3,13 @@ package scattergather
 import akka.actor._
 import data.Hotel
 import debug.DebugActor
-import akka.cluster.Cluster
-import akka.cluster.ClusterEvent.MemberUp
 
 
 /** This class manages a scatter-gather index node. 
  *  It is responsible for loading, splitting and monitoring the health of its node. 
  */
-class NodeManager(val id: String, val db: ActorRef, top: Boolean) extends Actor with ActorLogging with DebugActor {
+// TODO - SPlit "top" behavior into an outer actor!
+class NodeManager(val id: String, val db: ActorRef) extends Actor with ActorLogging with DebugActor {
   import NodeManager._
   var current: Option[ActorRef] = None
   var changes = 0;
@@ -18,8 +17,6 @@ class NodeManager(val id: String, val db: ActorRef, top: Boolean) extends Actor 
   val dbHandler = context.actorOf(Props(new DbWorker(id, db)), "database-saver-" + id)
   val stats = context.actorOf(Props[StatisticsCollector], "stats")
   var bufferedMessages = collection.mutable.ArrayBuffer.empty[(Any, ActorRef)]
-  // TODO - supervisor strategy for sub-actor...
-  val cluster = Cluster(context.system)
 
   
   def sendToCurrent(msg: Any, from: ActorRef): Unit = {
@@ -80,7 +77,7 @@ class NodeManager(val id: String, val db: ActorRef, top: Boolean) extends Actor 
       log.info(s"node [$id] is becoming a category of [${childIds mkString ","}]")
       val children =
         for(kid <- childIds)
-        yield CategoryChild(Props(new NodeManager(kid, db, false)), s"node-manager-$kid-$changes")
+        yield CategoryChild(Props(new NodeManager(kid, db)), s"node-manager-$kid-$changes")
       killAndReplace(context.actorOf(Props(new CategoryNode(children)), s"category-$id-$changes"))
       changes += 1
     case s @ Split(hotels: Seq[Hotel]) =>
@@ -91,21 +88,11 @@ class NodeManager(val id: String, val db: ActorRef, top: Boolean) extends Actor 
       // Our future has failed, let's issue a better error perhaps?
       log.error(ex, "Failed to load initial state!")
       throw ex
-    case MemberUp(member) =>
-      // A new member in the cluster!
-      log.info(s"Found new cluster to register backend on: $member")
-      // Register the root node (us)
-      context.actorFor(RootActorPath(member.address) / "user" / "search-front-end") ! frontend.RegisterTree(self)
   }
   
   
   // TODO - ping roland about this one.
-  override def preStart(): Unit = {
-    loadInitialState()
-    if(top) cluster.subscribe(self, classOf[MemberUp])
-  }
-  override def postStop(): Unit = if(top) cluster.unsubscribe(self)
-  
+  override def preStart(): Unit = { loadInitialState() }
     
   // Loads our initial state and send ourselves a "Become" message.
   def loadInitialState(): Unit = {

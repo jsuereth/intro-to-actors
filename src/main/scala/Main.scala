@@ -14,6 +14,10 @@ import akka.cluster.ClusterEvent.ClusterDomainEvent
 import akka.cluster.Cluster
 
 
+import unfiltered.response._
+import akka.actor.PoisonPill
+
+
 object Main {
   
   def main(args: Array[String]): Unit = {
@@ -43,12 +47,27 @@ object Main {
     saveInitialData(dbSystem)
     
     val frontend = startFrontEnd(system)
-    val tree =
-      system.actorOf(Props(new NodeManager("top", dbSystem, true))
+    
+    
+    
+    val tree = //startTreeSingleton(system, dbSystem)
+    
+      system.actorOf(Props(new TreeTop("top", dbSystem))
         .withDispatcher("search-tree-dispatcher"), "search-back-end")
     startWebServer(system, frontend, 8888, Some(tree))
   }
 
+  def startTreeSingleton(system: ActorSystem, db: ActorRef): ActorRef = {
+    import akka.contrib.pattern.ClusterSingletonManager
+    system.actorOf(Props(
+        new ClusterSingletonManager(
+          singletonProps = _ => Props(new TreeTop("top", db)),
+          singletonName = "consumer",
+          terminationMessage = PoisonPill,
+          role = None)),
+       name = "singleton")
+  }
+  
   def startSecondaryNode(system: ActorSystem) {
     val frontend = startFrontEnd(system)
     startWebServer(system, frontend, 8889)
@@ -147,6 +166,7 @@ object Main {
   
   
   def saveInitialData(db: ActorRef) = {
+    import data.Location
     for { hotel <- Seq(
         Hotel("1", "Hilton 1", "A nice hotel", Location("123 Street St", "New York", "USA")),
         Hotel("2", "Hilton 2", "A nice hotel", Location("123 Street St", "New York", "USA")),
@@ -173,9 +193,6 @@ object Main {
     db ! data.db.DbActor.SaveCategory("category-7", Seq("topic-3", "topic-4"))
   }
 }
-
-
-import unfiltered.response._
 /** Returns a file as an unfiltered response. */
 case class FileResponse(file: java.io.File) extends ResponseStreamer {
   override def stream(os: java.io.OutputStream): Unit = {
