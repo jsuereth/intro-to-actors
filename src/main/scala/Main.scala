@@ -43,7 +43,7 @@ object Main {
   def startMainNode(system: ActorSystem): Unit = {
     
     val dbSystem =
-      system.actorOf(Props(new data.db.DbSupervisor(data.db.BerkeleyBackend.default)), "search-db")
+      system.actorOf(Props(new data.db.DbSupervisor(data.db.RiakBackend.default)), "search-db")
     saveInitialData(dbSystem)
     
     val frontend = startFrontEnd(system)
