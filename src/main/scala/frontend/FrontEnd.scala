@@ -25,7 +25,7 @@ object FrontEnd {
 class FrontEnd extends Actor with debug.DebugActor with ActorLogging {
   var searchService: Option[ActorRef] = None
   def receive: Receive = debugHandler orElse {
-    case RegisterTree(tree) =>
+    case RegisterTree(tree) if searchService.isEmpty =>
       log.info(s"Registering search tree: [$tree] with current frontend [$self]")
       // Now we create our underlying tree...
       val cache = context.actorOf(

@@ -12,10 +12,9 @@ import akka.cluster.ClusterEvent.MemberUp
 import akka.cluster.ClusterEvent.UnreachableMember
 import akka.cluster.ClusterEvent.ClusterDomainEvent
 import akka.cluster.Cluster
-
-
 import unfiltered.response._
 import akka.actor.PoisonPill
+import scattergather.TreeTop
 
 
 object Main {
@@ -28,19 +27,19 @@ object Main {
       System.err.println("usage: cluster <port> <true|false>")
       System.exit(1)
     }
-    val createSearchTree: Boolean = (args drop 1).headOption map (_ == "true") getOrElse false 
+    val firstNode: Boolean = (args drop 1).headOption map (_ == "true") getOrElse false 
     
     // Create an Akka system
     val system = ActorSystem("ClusterSystem")
     
     // Every node starts a front end, but we only start the search tree in one node (for now...)
-    if(createSearchTree) startMainNode(system)
-    else startSecondaryNode(system)
+    if(firstNode) startClusterNode(system)
+    else startClusterNode(system, 8889)
   }
 
   // NOTE - This is very bad.  IT's a hack because we lamed out and used
   // Berkeley DB instead of Riak.
-  def startMainNode(system: ActorSystem): Unit = {
+  def startClusterNode(system: ActorSystem, webPort: Int = 8888): Unit = {
     
     val dbSystem =
       system.actorOf(Props(new data.db.DbSupervisor(data.db.RiakBackend.default)), "search-db")
@@ -49,11 +48,11 @@ object Main {
     val frontend = startFrontEnd(system)
     
     
-    val tree = //startTreeSingleton(system, dbSystem)
-    
-      system.actorOf(Props(new TreeTop("top", dbSystem))
-        .withDispatcher("search-tree-dispatcher"), "search-back-end")
-    startWebServer(system, frontend, 8888, Some(tree))
+    val tree = startTreeSingleton(system, dbSystem)
+    frontend ! RegisterTree(tree)
+      /*system.actorOf(Props(new TreeTop("top", dbSystem))
+        .withDispatcher("search-tree-dispatcher"), "search-back-end")*/
+    startWebServer(system, frontend, webPort, Some(tree))
   }
 
   def startTreeSingleton(system: ActorSystem, db: ActorRef): ActorRef = {
@@ -61,18 +60,14 @@ object Main {
     system.actorOf(Props(
         new ClusterSingletonManager(
           singletonProps = _ => Props(new TreeTop("top", db)),
-          singletonName = "consumer",
+          singletonName = "search-tree",
           terminationMessage = PoisonPill,
           role = None)),
        name = "singleton")
        
     // Note: We should return a proxy instead of the singleton cluster manager. The proxy will
     // know how to reach the singleton.
-  }
-  
-  def startSecondaryNode(system: ActorSystem) {
-    val frontend = startFrontEnd(system)
-    startWebServer(system, frontend, 8889)
+    system.actorOf(Props[TreeTopProxy], "tree-top-proxy")
   }
   
   def startFrontEnd(system: ActorSystem): ActorRef =

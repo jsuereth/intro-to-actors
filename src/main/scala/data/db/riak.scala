@@ -74,7 +74,7 @@ class RiakBucket[Key, Value](bucket: Bucket)(implicit k: Stringifier[Key], v: St
   def get(key: Key): Option[Value] = {
     val keyString = k toString key
     val result = bucket.fetch(keyString).notFoundOK(true).execute()
-    Option(result.getValueAsString()) map v.fromString
+    Option(result) map (_.getValueAsString()) map v.fromString
   }
   def put(key: Key, value: Value): Unit = {
     val keyString = k toString key
