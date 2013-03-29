@@ -14,7 +14,8 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-contrib" % "2.2-M2",
   "org.specs2" %% "specs2" % "1.14" % "test",
   "com.sleepycat" % "je" % "3.3.75",
-  "net.databinder" %% "unfiltered-netty-server" % "0.6.7"
+  "net.databinder" %% "unfiltered-netty-server" % "0.6.7",
+  "com.basho.riak" % "riak-client" % "1.1.0"
 )
 
 scalacOptions ++= Seq("-feature", "-deprecation", "-optimise")

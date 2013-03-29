@@ -49,7 +49,6 @@ object Main {
     val frontend = startFrontEnd(system)
     
     
-    
     val tree = //startTreeSingleton(system, dbSystem)
     
       system.actorOf(Props(new TreeTop("top", dbSystem))
@@ -66,6 +65,9 @@ object Main {
           terminationMessage = PoisonPill,
           role = None)),
        name = "singleton")
+       
+    // Note: We should return a proxy instead of the singleton cluster manager. The proxy will
+    // know how to reach the singleton.
   }
   
   def startSecondaryNode(system: ActorSystem) {
