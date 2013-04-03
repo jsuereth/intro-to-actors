@@ -3,6 +3,7 @@ package scattergather
 import akka.actor._
 import data.Hotel
 import debug.DebugActor
+import akka.routing.Broadcast
 
 
 /** This class manages a scatter-gather index node. 
@@ -60,7 +61,7 @@ class NodeManager(val id: String, val db: ActorRef) extends Actor with ActorLogg
       sendToCurrent(q, sender)
     case add: AddHotel =>
       log.debug(s"Adding hotel: [${add.content.id}] to node[${id}]")
-      sendToCurrent(add, sender)
+      sendToCurrent(Broadcast(add), sender)
     // Internal Messages
     case SaveTopic(hotels) =>
       // Ensure the current topic data is saved, in a safe fashion that won't affect the
@@ -70,7 +71,8 @@ class NodeManager(val id: String, val db: ActorRef) extends Actor with ActorLogg
       log.debug(s"Attempting to save category [$id] with topics [${topics mkString ","}]")
       dbHandler ! SaveCategory(topics)
     case BecomeTopic(hotels) =>
-      killAndReplace(context.actorOf(Props(new TopicNode(hotels)), s"topic-$id-$changes"))
+      killAndReplace(context.actorOf(
+          withClusteredRouterSettings(Props(new TopicNode(hotels))), s"topic-$id-$changes"))
       changes += 1
     case BecomeCategory(childIds) =>
       // TODO - We shouldn't see this happpening a lot...
@@ -88,6 +90,14 @@ class NodeManager(val id: String, val db: ActorRef) extends Actor with ActorLogg
       // Our future has failed, let's issue a better error perhaps?
       log.error(ex, "Failed to load initial state!")
       throw ex
+  }
+  
+  def withClusteredRouterSettings(props: Props): Props = {
+    import akka.cluster.routing._
+    import akka.routing._
+    props.withRouter(ClusterRouterConfig(BroadcastRouter(1), 
+      ClusterRouterSettings(
+          totalInstances = 3, maxInstancesPerNode = 1, allowLocalRoutees = true, useRole = None)))
   }
   
   
